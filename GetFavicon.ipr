@@ -12,6 +12,7 @@
           <element id="directory" name="lib">
             <element id="file-copy" path="$PROJECT_DIR$/../lib/jsoup-1.8.2.jar" />
             <element id="file-copy" path="$PROJECT_DIR$/image4j.jar" />
+            <element id="file-copy" path="$PROJECT_DIR$/../lib/guava-18.0.jar" />
           </element>
         </element>
         <element id="dir-copy" path="$PROJECT_DIR$/web" />
@@ -141,6 +142,7 @@
         <inspection_tool class="RequiredAttributes" enabled="true" level="WARNING" enabled_by_default="true">
           <option name="myAdditionalRequiredHtmlAttributes" value="scoped" />
         </inspection_tool>
+        <inspection_tool class="SimplifiableConditionalExpression" enabled="false" level="WARNING" enabled_by_default="false" />
         <inspection_tool class="SimplifiableIfStatement" enabled="false" level="WARNING" enabled_by_default="false" />
         <inspection_tool class="SpellCheckingInspection" enabled="false" level="TYPO" enabled_by_default="false">
           <option name="processCode" value="true" />
