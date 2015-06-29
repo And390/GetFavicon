@@ -18,6 +18,12 @@
         <element id="dir-copy" path="$PROJECT_DIR$/web" />
       </root>
     </artifact>
+    <artifact type="war" name="war">
+      <output-path>$PROJECT_DIR$/out/</output-path>
+      <root id="archive" name="getfavicon.war">
+        <element id="artifact" artifact-name="web" />
+      </root>
+    </artifact>
   </component>
   <component name="CompilerConfiguration">
     <option name="DEFAULT_COMPILER" value="Javac" />
@@ -43,7 +49,9 @@
   <component name="DependencyValidationManager">
     <option name="SKIP_IMPORT_STATEMENTS" value="false" />
   </component>
-  <component name="Encoding" useUTFGuessing="true" native2AsciiForPropertiesFiles="false" />
+  <component name="Encoding" useUTFGuessing="true" native2AsciiForPropertiesFiles="false">
+    <file url="file://$PROJECT_DIR$/heroku/Procfile" charset="UTF-8" />
+  </component>
   <component name="EntryPointsManager">
     <entry_points version="2.0" />
   </component>

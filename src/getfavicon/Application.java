@@ -41,16 +41,16 @@ public class Application
         public Request(String url_)  {  url=url_;  }
     }
 
-    private static class CachedIcon extends TreeMap<Integer, IconImageItem> {
+    public static class CachedIcon extends TreeMap<Integer, IconImageItem> {
         //TODO так хранить - расточительство
     }
 
-    private static class IconImageItem  {
+    public static class IconImageItem  {
         int size;
         int priority;
         String url;
         BufferedImage image;  //null if not loaded
-        public String toString()  {  return size+"x"+size+" "+priority+" "+url;  }
+        public String toString()  {  return (size==0?"?":""+size)+"x"+(size==0?"?":""+size)+" "+priority+" "+url;  }
     }
 
     private static LoadingCache<String, CachedIcon> cache = CacheBuilder.newBuilder()
@@ -144,9 +144,15 @@ public class Application
         return image;
     }
 
-    private static CachedIcon load(String url) throws IOException {
+    public static CachedIcon load(String url) throws IOException {
         //    execute
-        Document document = Jsoup.parse(new URL(url), 15000);
+        Document document = Jsoup.connect(url)
+           .ignoreContentType(true)
+           .userAgent("Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:38.0) Gecko/20100101 Firefox/38.0")
+           .referrer("http://www.google.com")
+           .timeout(12000)
+           //.followRedirects(true)
+           .get();
 
         //    parse HTML
         java.util.List<IconImageItem> items = new ArrayList<>();
@@ -171,13 +177,14 @@ public class Application
             }
             else if (elem.tagName().equals("base"))  {
                 base = elem.attr("href");
-                if (!base.isEmpty())  base = url;
+                if (base.isEmpty())  base = url;
             }
         }
 
         //    append url base
-        URL baseURL = new URL(base);
-        for (IconImageItem item : items)  item.url = new URL(baseURL, item.url).toString();
+        try  {  URL baseURL = new URL(base);
+                for (IconImageItem item : items)  item.url = new URL(baseURL, item.url).toString();  }
+        catch (MalformedURLException e)  {}  //ignore malformed base URLs
 
         //    order images by size, load images without sizes
         CachedIcon itemsBySize = new CachedIcon ();

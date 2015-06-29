@@ -13,11 +13,18 @@ import java.io.IOException;
 public class RunApplication
 {
     @Test
-    public void getIcon() throws Exception
+    public void main() throws Exception
     {
-        BufferedImage result = Application.process(new Application.Request("www.gamedev.ru"), "32", "png");
+        BufferedImage result = Application.process(new Application.Request("vk.com"), "32", "png");
         try (FileOutputStream output = new FileOutputStream("result.png"))
         {  ImageIO.write(result, "PNG", output);  }
+    }
+
+    @Test
+    public void getIconImages() throws Exception
+    {
+        Application.CachedIcon icon = Application.load("http://vk.com");
+        for (Application.IconImageItem item : icon.values())  System.out.println(item.toString());
     }
 
 }
