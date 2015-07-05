@@ -47,7 +47,9 @@ public class Servlet extends HttpServlet
         String url = request.getRequestURI();
         url = url.substring(request.getContextPath().length());  //cut context
         if (url.startsWith("/"))  url = url.substring(1);
-        System.out.println(url);  //log
+        //    log
+        String q = request.getQueryString();
+        System.out.println(url + (q!=null ? "?"+q : ""));
 
         //    try process
         Application.Request appRequest = new Application.Request(url);

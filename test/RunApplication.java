@@ -1,5 +1,4 @@
 import getfavicon.Application;
-import getfavicon.ImageProcessor;
 import org.junit.Test;
 
 import javax.imageio.ImageIO;
@@ -22,8 +21,8 @@ public class RunApplication
     @Test
     public void getIconImages() throws Exception
     {
-        Application.CachedIcon icon = ImageProcessor.load("http://vk.com");
-        for (Application.IconImageItem item : icon.values())  System.out.println(item.toString());
+        Application.SiteImages images = Application.loadImages("http://vk.com");
+        for (Application.SiteImageItem item : images)  System.out.println(item.toString());
     }
 
 }
