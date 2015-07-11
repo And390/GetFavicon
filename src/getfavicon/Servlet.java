@@ -64,9 +64,9 @@ public class Servlet extends HttpServlet
         //    in case of error return 500 with error icon
         catch (Exception e)
         {
-            e.printStackTrace();
             int statusCode = e instanceof BadRequestException ? 400 :
                              e instanceof NotFoundException ? 404 : 500;
+            if (statusCode==500)  e.printStackTrace();
             BufferedImage image = Application.processError(appRequest, ""+statusCode);
             response.setStatus(statusCode);
             response.setContentType(imageContentTypes.get(appRequest.format));

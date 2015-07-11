@@ -243,10 +243,10 @@ public class Application
                 switch (elem.attr("rel").toLowerCase())  {
                     case "icon":
                     case "shortcut icon":
-                        priority = 1;  iconUrl = elem.attr("href").toLowerCase();  break;
+                        priority = 1;  iconUrl = elem.attr("href");  break;
                     case "apple-touch-icon":
                     case "apple-touch-icon-precomposed":
-                        priority = 2;  iconUrl = elem.attr("href").toLowerCase();
+                        priority = 2;  iconUrl = elem.attr("href");
                         size = parseSize(elem.attr("sizes").toLowerCase());  break;
                 }
                 if (priority!=0 && Util.isNotEmpty(iconUrl))  {
