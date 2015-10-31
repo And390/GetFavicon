@@ -225,12 +225,13 @@ public class Application
     public static SiteImages loadImages(String url) throws IOException {
         //    execute
         Document document = Jsoup.connect(url)
-           .ignoreContentType(true)
-           .userAgent("Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:38.0) Gecko/20100101 Firefox/38.0")
-           .referrer("http://www.google.com")
-           .timeout(12000)
-           //.followRedirects(true)
-           .get();
+            .ignoreHttpErrors(true)
+            .ignoreContentType(true)
+            .userAgent("Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:38.0) Gecko/20100101 Firefox/38.0")
+            .referrer("http://www.google.com")
+            .timeout(12000)
+            //.followRedirects(true)
+            .get();
 
         //    parse HTML
         List<SiteImageItem> items = new ArrayList<> ();
