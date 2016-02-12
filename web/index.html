@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="ASCII">
+    <title>Get Favicon Service</title>
+</head>
+<body>
+
+
+<h3>Get Favicon Service</h3>
+
+<p>
+    Use this service to get an icon of a specified webpage.
+    It tries to retrieve all available icons from the webpage not only favicon to get the result.
+    You need to use GET method, pass url as a path (possible, with <code>http</code> or <code>https</code> protocol) and can specify optional parameters.
+</p>
+
+Example:
+<pre>
+    /www.google.ru
+    /https://www.google.ru/?size=128&format=png
+</pre>
+
+Parameters:
+<table>
+    <tr><th>size</th><td>The size of the image in pixels, <code>16</code> dy default</td></tr>
+    <tr><th>format</th><td>The format of the response, can be one of: <code>png</code>, <code>ico</code>, <code>gif</code>, <code>bmp</code>, <code>jpg</code> or <code>jpeg</code>, default is <code>png</code>.</td></tr>
+</table>
+
+
+</body>
+</html>

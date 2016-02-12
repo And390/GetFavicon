@@ -15,6 +15,7 @@ import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
+import java.awt.image.IndexColorModel;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -33,7 +34,20 @@ import java.util.concurrent.TimeUnit;
 public class Application
 {
 
-    public static enum Format { PNG, ICO, GIF, BMP, JPG }
+    public static enum Format { PNG, ICO, GIF, BMP, JPEG }
+
+    public static final Map<String, Format> FORMAT_MAP = new HashMap<>();
+    static  {
+        for (Format format : Format.values())  FORMAT_MAP.put(format.name(), format);
+        FORMAT_MAP.put("JPG", Format.JPEG);
+    }
+
+    public static final Set<Format> SUPPORT_ALPHA = new HashSet<>();
+    static  {
+        SUPPORT_ALPHA.add(Format.PNG);
+        SUPPORT_ALPHA.add(Format.GIF);
+        SUPPORT_ALPHA.add(Format.ICO);
+    }
 
     public static class Request {
         public String url;
@@ -131,7 +145,7 @@ public class Application
             if (request.url.isEmpty())  throw new ExternalException ("empty URL");
             new URL (request.url);
             if (Util.isNotEmpty(requestSize))  request.size = Util.getInt(requestSize, "size", 1, 256);
-            if (Util.isNotEmpty(requestFormat))  request.format = Format.valueOf(requestFormat.toUpperCase());
+            if (Util.isNotEmpty(requestFormat))  request.format = Util.get(requestFormat.toUpperCase(), "format", FORMAT_MAP);
         }
         catch (ExternalException|MalformedURLException e)  {  throw new BadRequestException (e.getMessage());  }
 
@@ -148,6 +162,17 @@ public class Application
 
         //    resize image
         if (image.getWidth()!=request.size)  image = getScaledImage(image, request.size, request.size);
+
+        //    remove transparecy if need
+        if (image.getColorModel().hasAlpha() && !SUPPORT_ALPHA.contains(request.format)) {
+            BufferedImage old = image;
+            image = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics2D g2d = image.createGraphics();
+            g2d.setColor(Color.WHITE);
+            g2d.fillRect(0, 0, image.getWidth(), image.getHeight());
+            g2d.drawImage(old, 0, 0, null);
+            g2d.dispose();
+        }
 
         return image;
     }

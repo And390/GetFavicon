@@ -1,6 +1,10 @@
 package getfavicon;
 
+import net.sf.image4j.codec.ico.ICOEncoder;
+import utils.ByteArray;
+
 import javax.imageio.ImageIO;
+import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -9,6 +13,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.awt.image.BufferedImage;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.HashMap;
 
 import static getfavicon.Application.Format;
@@ -28,12 +33,18 @@ public class Servlet extends HttpServlet
         imageContentTypes.put(Format.ICO, "image/x-icon");
         imageContentTypes.put(Format.GIF, "image/gif");
         imageContentTypes.put(Format.BMP, "image/bmp");
-        imageContentTypes.put(Format.JPG, "image/jpeg");
+        imageContentTypes.put(Format.JPEG, "image/jpeg");
     }
+
+    private byte[] mainPage;
 
     @Override
     public void init() throws ServletException {
-
+        try  {
+            ServletContext context = getServletContext();
+            mainPage = ByteArray.read(context.getResourceAsStream("index.html"));
+        }
+        catch (IOException e)  {  throw new ServletException(e);  }
     }
 
     private static void close(Closeable closeable)  {
@@ -51,6 +62,13 @@ public class Servlet extends HttpServlet
         String q = request.getQueryString();
         System.out.println(url + (q!=null ? "?"+q : ""));
 
+        //    default page
+        if (url.isEmpty() || url.equals("index.html") || url.equals("index.htm"))  {
+            response.setContentType("text/html; charset=ASCII");
+            response.getOutputStream().write(mainPage);
+            return;
+        }
+
         //    try process
         Application.Request appRequest = new Application.Request(url);
         try  {
@@ -59,7 +77,11 @@ public class Servlet extends HttpServlet
             //    write result image
             response.setStatus(200);
             response.setContentType(imageContentTypes.get(appRequest.format));
-            ImageIO.write(image, appRequest.format.toString(), response.getOutputStream());
+            OutputStream out = response.getOutputStream();
+            if (appRequest.format==Format.ICO)  ICOEncoder.write(image, out);
+            else if (!ImageIO.write(image, appRequest.format.toString(), out))
+                throw new BadRequestException("Can't write " + appRequest.format + " for this image");
+            out.flush();
         }
         //    in case of error return 500 with error icon
         catch (Exception e)
