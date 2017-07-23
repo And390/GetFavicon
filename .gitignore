@@ -1,3 +1,6 @@
 out
 *.iws
 *.jar
+*.log
+result.*
+*_result.*

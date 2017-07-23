@@ -13,7 +13,31 @@ public class RunApplication
     @Test
     public void main() throws Exception
     {
-        BufferedImage result = Application.process(new Application.Request("vk.com"), "32", "png");
+        BufferedImage result = Application.process(new Application.Request("vk.com"), "32", "png", false);
+        try (FileOutputStream output = new FileOutputStream("result.png"))
+        {  ImageIO.write(result, "PNG", output);  }
+    }
+
+    @Test
+    public void button() throws Exception
+    {
+        BufferedImage result = Application.process(new Application.Request("metro.yandex.ru"), "32", "png", true);
+        try (FileOutputStream output = new FileOutputStream("result.png"))
+        {  ImageIO.write(result, "PNG", output);  }
+    }
+
+    @Test
+    public void yandexMail() throws Exception
+    {
+        BufferedImage result = Application.process(new Application.Request("mail.yandex.ru"), "32", "png", true);
+        try (FileOutputStream output = new FileOutputStream("result.png"))
+        {  ImageIO.write(result, "PNG", output);  }
+    }
+
+    @Test
+    public void google() throws Exception
+    {
+        BufferedImage result = Application.process(new Application.Request("www.google.ru"), "32", "png", true);
         try (FileOutputStream output = new FileOutputStream("result.png"))
         {  ImageIO.write(result, "PNG", output);  }
     }

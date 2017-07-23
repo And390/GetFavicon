@@ -7,6 +7,13 @@
 <body>
 
 
+<style>
+    th {
+        padding-right: 20px;
+    }
+</style>
+
+
 <h3>Get Favicon Service</h3>
 
 <p>
@@ -17,16 +24,23 @@
 
 Example:
 <pre>
-    /www.google.ru
-    /https://www.google.ru/?size=128&format=png
+    /wikipedia.com
+    /https://wikipedia.com/?size=128&format=png&no-store
+    /wikipedia.com?size=64&button&max-age=3600
 </pre>
 
 Parameters:
 <table>
     <tr><th>size</th><td>The size of the image in pixels, <code>16</code> dy default</td></tr>
     <tr><th>format</th><td>The format of the response, can be one of: <code>png</code>, <code>ico</code>, <code>gif</code>, <code>bmp</code>, <code>jpg</code> or <code>jpeg</code>, default is <code>png</code>.</td></tr>
+    <tr><th>button</th><td>Return icon in the form of a button</td></tr>
+    <tr><th>no-store</th><td>Add <code>Cache-Control: no-store</code> header to response</td></tr>
+    <tr><th>max-age</th><td>Add <code>Cache-Control: max-age=<i>value</i></code> header to response with specified value. Default <code>Cache-Control</code> value is <code>max-age=604800</code> (a week)</td></tr>
 </table>
 
+<p>
+    Free to use.
+</p>
 
 </body>
 </html>

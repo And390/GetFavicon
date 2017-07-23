@@ -8,8 +8,10 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Collections;
-import java.util.Comparator;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.Assert.assertEquals;
@@ -20,8 +22,11 @@ import static org.junit.Assert.assertEquals;
  */
 public class TestApplication
 {
+    public static final int PORT = 8089;
+    public static final String BASE = "http://127.0.0.1:8089/";
+
     @Rule
-    public WireMockRule wireMockRule = new WireMockRule(8089);
+    public WireMockRule wireMockRule = new WireMockRule(PORT);
 
     @Test
     public void loadImages() throws IOException, ExternalException
@@ -52,28 +57,28 @@ public class TestApplication
         stubFor(get(urlEqualTo("/og-image.png")).willReturn(aResponse().withBody(getImageContent(64))));
         stubFor(get(urlEqualTo("/og-image_96.png")).willReturn(aResponse().withBody(getImageContent(96))));
 
-        Application.SiteImages images = Application.loadImages("http://127.0.0.1:8089/");
+        Application.SiteImages images = Application.loadImages(BASE);
         System.out.println(images);
 
         Application.SiteImages expected = new Application.SiteImages ();
-        expected.add(new Application.SiteImageItem(32, 1, "http://127.0.0.1:8089/favicon.png"));
-        expected.add(new Application.SiteImageItem(64, 3, "http://127.0.0.1:8089/og-image.png"));
-        expected.add(new Application.SiteImageItem(76, 2, "http://127.0.0.1:8089/apple-touch-icon_76.png"));
-        expected.add(new Application.SiteImageItem(120, 2, "http://127.0.0.1:8089/apple-touch-icon_120.png"));
-        expected.add(new Application.SiteImageItem(144, 2, "http://127.0.0.1:8089/apple-touch-icon_144.png"));
-        expected.add(new Application.SiteImageItem(152, 2, "http://127.0.0.1:8089/apple-touch-icon_152.png"));
+        expected.add(new Application.SiteImageItem(32, 1, BASE + "favicon.png"));
+        expected.add(new Application.SiteImageItem(64, 4, BASE+"og-image.png"));
+        expected.add(new Application.SiteImageItem(76, 2, BASE+"apple-touch-icon_76.png"));
+        expected.add(new Application.SiteImageItem(120, 2, BASE+"apple-touch-icon_120.png"));
+        expected.add(new Application.SiteImageItem(144, 2, BASE+"apple-touch-icon_144.png"));
+        expected.add(new Application.SiteImageItem(152, 2, BASE+"apple-touch-icon_152.png"));
         assertEquals("", expected, images);
 
         //    try get image with lie size and see the difference
         Application.getAppropriateImage(images, 152);
 
         expected = new Application.SiteImages ();
-        expected.add(new Application.SiteImageItem(32, 1, "http://127.0.0.1:8089/favicon.png"));
-        expected.add(new Application.SiteImageItem(64, 3, "http://127.0.0.1:8089/og-image.png"));
-        expected.add(new Application.SiteImageItem(76, 2, "http://127.0.0.1:8089/apple-touch-icon_76.png"));
-        expected.add(new Application.SiteImageItem(120, 2, "http://127.0.0.1:8089/apple-touch-icon_120.png"));
-        expected.add(new Application.SiteImageItem(128, 2, "http://127.0.0.1:8089/apple-touch-icon_152.png"));
-        expected.add(new Application.SiteImageItem(144, 2, "http://127.0.0.1:8089/apple-touch-icon_144.png"));
+        expected.add(new Application.SiteImageItem(32, 1, BASE+"favicon.png"));
+        expected.add(new Application.SiteImageItem(64, 4, BASE+"og-image.png"));
+        expected.add(new Application.SiteImageItem(76, 2, BASE+"apple-touch-icon_76.png"));
+        expected.add(new Application.SiteImageItem(120, 2, BASE+"apple-touch-icon_120.png"));
+        expected.add(new Application.SiteImageItem(128, 2, BASE+"apple-touch-icon_152.png"));
+        expected.add(new Application.SiteImageItem(144, 2, BASE+"apple-touch-icon_144.png"));
         assertEquals("", expected, images);
     }
 
@@ -93,6 +98,23 @@ public class TestApplication
         b.add(new Application.SiteImageItem (20, 1, "yyy"));
         b.add(new Application.SiteImageItem(10, 1, "xxx"));
 
-        assertEquals("", a, b);
+        assertEquals("", b, a);
+    }
+
+    @Test
+    public void addImagesWithSameSize()  {
+        Application.SiteImages actual = new Application.SiteImages ();
+        actual.add(new Application.SiteImageItem (10, 2, "xxx"));
+        actual.add(new Application.SiteImageItem (10, 3, "yyy"));
+
+        Application.SiteImages expected = new Application.SiteImages ();
+        expected.add(new Application.SiteImageItem(10, 2, "xxx"));
+        assertEquals("", expected, actual);
+
+        actual.add(new Application.SiteImageItem (10, 1, "zzz"));
+
+        expected = new Application.SiteImages ();
+        expected.add(new Application.SiteImageItem(10, 1, "zzz"));
+        assertEquals("", expected, actual);
     }
 }

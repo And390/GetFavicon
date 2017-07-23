@@ -63,15 +63,6 @@
         <SOURCES />
       </library>
     </orderEntry>
-    <orderEntry type="module-library" scope="PROVIDED">
-      <library>
-        <CLASSES>
-          <root url="jar://$MODULE_DIR$/../../../Java/Tomcat 7.0.53/lib/servlet-api.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES />
-      </library>
-    </orderEntry>
     <orderEntry type="module-library">
       <library>
         <CLASSES>
@@ -108,10 +99,19 @@
         <SOURCES />
       </library>
     </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../../java/Tomcat-8.0.18/lib/servlet-api.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
     <orderEntry type="module-library" scope="TEST">
       <library>
         <CLASSES>
-          <root url="jar://$MODULE_DIR$/../lib/wiremock-standalone-2.0.6-beta.jar!/" />
+          <root url="jar://$MODULE_DIR$/../lib/wiremock-1.56-standalone.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES />
@@ -119,4 +119,3 @@
     </orderEntry>
   </component>
 </module>
-

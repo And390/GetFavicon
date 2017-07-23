@@ -27,7 +27,7 @@ import static getfavicon.Application.Format;
 public class Servlet extends HttpServlet
 {
 
-    private static HashMap<Format, String> imageContentTypes = new HashMap<> ();
+    private static final HashMap<Format, String> imageContentTypes = new HashMap<> ();
     static  {
         imageContentTypes.put(Format.PNG, "image/png");
         imageContentTypes.put(Format.ICO, "image/x-icon");
@@ -35,6 +35,8 @@ public class Servlet extends HttpServlet
         imageContentTypes.put(Format.BMP, "image/bmp");
         imageContentTypes.put(Format.JPEG, "image/jpeg");
     }
+
+    private static final String DEFAULT_CACHE_CONTROL = "max-age=" + (3600 * 24 * 7);
 
     private byte[] mainPage;
 
@@ -72,11 +74,13 @@ public class Servlet extends HttpServlet
         //    try process
         Application.Request appRequest = new Application.Request(url);
         try  {
-            BufferedImage image = Application.process(appRequest, request.getParameter("size"), request.getParameter("format"));
+            BufferedImage image = Application.process(appRequest, request.getParameter("size"), request.getParameter("format"), request.getParameter("button") != null);
 
             //    write result image
             response.setStatus(200);
             response.setContentType(imageContentTypes.get(appRequest.format));
+            response.setHeader("Cache-Control", request.getParameter("no-store") != null ? "no-store" :
+                                                request.getParameter("max-age") != null ? "max-age=" + request.getParameter("max-age") : DEFAULT_CACHE_CONTROL);
             OutputStream out = response.getOutputStream();
             if (appRequest.format==Format.ICO)  ICOEncoder.write(image, out);
             else if (!ImageIO.write(image, appRequest.format.toString(), out))

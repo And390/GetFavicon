@@ -61,7 +61,7 @@ public class TestImages
         BufferedImage source = new BufferedImage (RandomUtil.random(1, 256), RandomUtil.random(1, 256), BufferedImage.TYPE_3BYTE_BGR);
         int width = RandomUtil.random(1, 256);
         int height = RandomUtil.random(1, 256);
-        BufferedImage result = Application.getScaledImage(source, width, height);
+        BufferedImage result = Application.getScaledImage(source, width, height, null);
         assertEquals("", width, result.getWidth());
         assertEquals("", height, result.getHeight());
     }
