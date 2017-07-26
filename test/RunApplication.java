@@ -35,9 +35,17 @@ public class RunApplication
     }
 
     @Test
-    public void google() throws Exception
+    public void directImage() throws Exception
     {
-        BufferedImage result = Application.process(new Application.Request("www.google.ru"), "32", "png", true);
+        BufferedImage result = Application.process(new Application.Request("https://github.com/fluidicon.png"), "32", "png", true);
+        try (FileOutputStream output = new FileOutputStream("result.png"))
+        {  ImageIO.write(result, "PNG", output);  }
+    }
+
+    @Test
+    public void svg() throws Exception
+    {
+        BufferedImage result = Application.process(new Application.Request("https://assets-cdn.github.com/pinned-octocat.svg"), "256", "png", false);
         try (FileOutputStream output = new FileOutputStream("result.png"))
         {  ImageIO.write(result, "PNG", output);  }
     }
@@ -48,5 +56,4 @@ public class RunApplication
         Application.SiteImages images = Application.loadImages("http://vk.com");
         for (Application.SiteImageItem item : images)  System.out.println(item.toString());
     }
-
 }

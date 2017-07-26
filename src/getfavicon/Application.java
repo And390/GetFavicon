@@ -1,6 +1,9 @@
 package getfavicon;
 
 import com.google.common.cache.*;
+import com.kitfox.svg.SVGDiagram;
+import com.kitfox.svg.SVGException;
+import com.kitfox.svg.SVGUniverse;
 import net.sf.image4j.codec.ico.ICODecoder;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
@@ -30,12 +33,13 @@ import java.util.concurrent.TimeUnit;
  */
 public class Application
 {
-    public enum Format { PNG, ICO, GIF, BMP, JPEG }
+    public enum Format { PNG, ICO, GIF, BMP, JPEG, SVG }
 
-    public static final Map<String, Format> FORMAT_MAP = new HashMap<>();
+    public static final Map<String, Format> REQUEST_FORMAT_MAP = new HashMap<>();
     static  {
-        for (Format format : Format.values())  FORMAT_MAP.put(format.name(), format);
-        FORMAT_MAP.put("JPG", Format.JPEG);
+        for (Format format : Format.values())  REQUEST_FORMAT_MAP.put(format.name(), format);
+        REQUEST_FORMAT_MAP.put("JPG", Format.JPEG);
+        REQUEST_FORMAT_MAP.remove("SVG");
     }
 
     public static final Set<Format> SUPPORT_ALPHA = new HashSet<>();
@@ -43,6 +47,20 @@ public class Application
         SUPPORT_ALPHA.add(Format.PNG);
         SUPPORT_ALPHA.add(Format.GIF);
         SUPPORT_ALPHA.add(Format.ICO);
+    }
+
+    public static final Map<String, Format> CONTENT_TYPE_FORMATS = new HashMap<>();
+    static  {
+        CONTENT_TYPE_FORMATS.put("image/jpeg", Format.JPEG);
+        CONTENT_TYPE_FORMATS.put("image/pjpeg", Format.JPEG);
+        CONTENT_TYPE_FORMATS.put("image/png", Format.PNG);
+        CONTENT_TYPE_FORMATS.put("image/gif", Format.GIF);
+        CONTENT_TYPE_FORMATS.put("image/bmp", Format.BMP);
+        CONTENT_TYPE_FORMATS.put("image/x-bmp", Format.BMP);
+        CONTENT_TYPE_FORMATS.put("image/x-ms-bmp", Format.BMP);
+        CONTENT_TYPE_FORMATS.put("image/x-icon", Format.ICO);
+        CONTENT_TYPE_FORMATS.put("image/vnd.microsoft.icon", Format.ICO);
+        CONTENT_TYPE_FORMATS.put("image/svg+xml", Format.SVG);
     }
 
     public static class Request {
@@ -82,18 +100,30 @@ public class Application
             for (SiteImageItem i : this)  buffer.append(i).nl();
             return buffer.toString();
         }
+
+        public int getScalable() {
+            return size() != 0 && get(0).size == SiteImageItem.ANY_SIZE ? 0 : -1;
+        }
     }
 
-    public static class SiteImageItem {
+    public static class SiteImageItem
+    {
+        public static final int UNKNOWN = -1;
+        public static final int ANY_SIZE = -2;
+
         public final int size;
         public final int priority;
         public String url;
-        public final BufferedImage image;  //null if not loaded
-        public SiteImageItem(int size_, int priority_, String url_)  {  size = size_;  priority = priority_;  url = url_;  image = null;  }
-        public SiteImageItem(int size_, int priority_, String url_, BufferedImage image_)  {  size = size_;  priority = priority_;  url = url_;  image = image_;  }
+        public final BufferedImage image;
+        public final SVGDiagram diagram;
+        public SiteImageItem(int size_, int priority_, String url_)  {  size = size_;  priority = priority_;  url = url_;  image = null;  diagram = null;  }
+        public SiteImageItem(int size_, int priority_, String url_, BufferedImage image_)  {  size = size_;  priority = priority_;  url = url_;  image = image_;  diagram = null;  }
+        public SiteImageItem(int size_, int priority_, String url_, SVGDiagram diagram_)  {  size = size_;  priority = priority_;  url = url_;  image = null;  diagram = diagram_;  }
+
+        public boolean isLoaded()  {  return image != null || diagram != null;  }
 
         @Override
-        public String toString()  {  return (size==-1?"?":""+size)+"x"+(size==-1?"?":""+size)+" "+priority+" "+url;  }
+        public String toString()  {  String sz = size== UNKNOWN ? "?" : size==ANY_SIZE ? "_" : ""+size;  return sz+"x"+sz+" "+priority+" "+url;  }
 
         @Override
         public boolean equals(Object object)  {
@@ -130,7 +160,7 @@ public class Application
 
 
     public static BufferedImage process(Request request, String requestSize, String requestFormat, boolean button)
-            throws ExternalException, IOException
+            throws ExternalException, IOException, SVGException
     {
         //    add default protocol
         int i = request.url.indexOf("://");
@@ -148,7 +178,7 @@ public class Application
             if (request.url.isEmpty())  throw new ExternalException ("empty URL");
             new URL (request.url);
             if (Util.isNotEmpty(requestSize))  request.size = Util.getInt(requestSize, "size", 1, 1024);
-            if (Util.isNotEmpty(requestFormat))  request.format = Util.get(requestFormat.toUpperCase(), "format", FORMAT_MAP);
+            if (Util.isNotEmpty(requestFormat))  request.format = Util.get(requestFormat.toUpperCase(), "format", REQUEST_FORMAT_MAP);
         }
         catch (ExternalException|MalformedURLException e)  {  throw new BadRequestException (e.getMessage());  }
 
@@ -162,20 +192,24 @@ public class Application
 
         //    find image
         int requiredSize = button ? Math.round(request.size * 0.875f) : request.size;
-        BufferedImage image = getAppropriateImage(siteImages, requiredSize);
+        SiteImageItem imageItem = getAppropriateImage(siteImages, requiredSize);
+
+        //    draw svg if needed
+        BufferedImage original = imageItem.image;
+        BufferedImage image = original != null ? original : drawSvg(imageItem.diagram, requiredSize);
 
         //    make button or resize image if necessary
         if (button)  {
-            if (image.getType() != BufferedImage.TYPE_INT_ARGB)  {
+            if (image == original || image.getType() != BufferedImage.TYPE_INT_ARGB)  {
                 BufferedImage old = image;
                 image = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
                 image.getGraphics().drawImage(old, 0, 0, null);
             }
             replaceWhiteBackgroundWithAlpha(image);
-            image = getScaledImage(image, requiredSize, requiredSize, new BufferedImage(request.size, request.size, BufferedImage.TYPE_INT_ARGB));
-            generateButton(image, request.size);
+            image = getScaledImage(image, requiredSize, requiredSize, request.size, request.size);
+            drawButton(image, request.size);
         }
-        else if (image.getWidth()!=request.size)  image = getScaledImage(image, request.size, request.size, null);
+        else if (image.getWidth()!=request.size)  image = getScaledImage(image, request.size, request.size);
 
         //    remove transparecy if need
         if (image.getColorModel().hasAlpha() && !SUPPORT_ALPHA.contains(request.format)) {
@@ -213,26 +247,28 @@ public class Application
             size>foundSize;
     }
 
-    public static BufferedImage getAppropriateImage(SiteImages images, int requestSize) throws NotFoundException
+    public static SiteImageItem getAppropriateImage(SiteImages images, int requestSize) throws NotFoundException
     {
         synchronized (images)  {  //todo плохо, что при загрузке доп. изображений блокируется доступ на чтение к уже загруженным
             while (true)  {
                 if (images.isEmpty())  throw new NotFoundException();
 
-                //    try to get bigger size
+                //    try to get equal or greater size
                 int i=0;
                 for (; i!=images.size() && images.get(i).size < requestSize; )  i++;
-                if (i==images.size())  i--;  // if no, get last
+                //  if size is not exactly the same and there is a scalable image - use scalable
+                if ((i==images.size() || images.get(i).size != requestSize) && images.getScalable()!=-1)  i = images.getScalable();
+                //  if no, get last
+                else if (i==images.size())  i--;
+                //  if size is not multiple of requested size then try to find it bigger
                 else  {
-                    //  if size is not multiple of requested size then try to find it bigger
                     for (int j=i; j!=images.size(); j++)
                         if (images.get(j).size % requestSize == 0)  {  i = j;  break;  }
                 }
 
                 //    return if loaded or else load and refind
-                BufferedImage image = images.get(i).image;
-                if (image!=null)
-                    return image;
+                SiteImageItem image = images.get(i);
+                if (image.isLoaded())  return image;
                 else  {
                     SiteImageItem item = images.remove(i);
                     loadImage(getConnection(item.url), images, item);
@@ -241,31 +277,21 @@ public class Application
         }
     }
 
-    public static BufferedImage getScaledImage(BufferedImage image, int width, int height, BufferedImage dest) {
-        int imageWidth  = image.getWidth();
-        int imageHeight = image.getHeight();
-
-        double scaleX = (double)width/imageWidth;
-        double scaleY = (double)height/imageHeight;
-        AffineTransform scaleTransform = new AffineTransform();
-        if (dest != null)  {
-            scaleTransform.translate((dest.getWidth() - width)/2.0, (dest.getHeight() - height)/2.0);
-        }
-        scaleTransform.scale(scaleX, scaleY);
-        AffineTransformOp bilinearScaleOp = new AffineTransformOp(scaleTransform, AffineTransformOp.TYPE_BILINEAR);
-
-        return bilinearScaleOp.filter(
-                image,
-                dest != null ? dest : new BufferedImage(width, height, image.getType()));
-    }
-
 
     //                --------    image loading    --------
 
     public static SiteImages loadImages(String url) throws IOException {
         //    execute
         Connection con = getConnection(url);
-        Document document = con.get();
+        Connection.Response response = con.execute();
+        String contentType = getPureContentType(response);
+        Format imgFormat = CONTENT_TYPE_FORMATS.get(contentType);
+        if (imgFormat != null || contentType.startsWith("image/"))  {
+            SiteImages siteImages = new SiteImages();
+            loadImage(response, siteImages, new SiteImageItem(SiteImageItem.UNKNOWN, 1, url), imgFormat);
+            return siteImages;
+        }
+        Document document = response.parse();
 
         //    parse HTML
         List<SiteImageItem> items = new ArrayList<> ();
@@ -277,7 +303,7 @@ public class Application
             if (elem.tagName().equals("link"))  {
                 int priority = 0;
                 String iconUrl = null;
-                int size = -1;
+                int size = SiteImageItem.UNKNOWN;
                 switch (elem.attr("rel").toLowerCase())  {
                     case "icon":
                     case "shortcut icon":
@@ -285,10 +311,14 @@ public class Application
                     case "apple-touch-icon":
                     case "apple-touch-icon-precomposed":
                         priority = 2;  iconUrl = elem.attr("href");
-                        size = parseSize(elem.attr("sizes").toLowerCase());  break;
+                        size = parseSize(elem.attr("sizes").toLowerCase());
+                        if (size == 0)  continue;
+                        break;
                     case "fluid-icon":
                         priority = 3;  iconUrl = elem.attr("href");
-                        size = parseSize(elem.attr("sizes").toLowerCase());  break;
+                        size = parseSize(elem.attr("sizes").toLowerCase());
+                        if (size == 0)  continue;
+                        break;
                 }
                 if (priority!=0 && Util.isNotEmpty(iconUrl))  {
                     items.add(new SiteImageItem(size, priority, iconUrl));
@@ -347,7 +377,7 @@ public class Application
         //    order images by size (see SiteImages.add), load images without sizes
         SiteImages siteImages = new SiteImages();
         for (SiteImageItem item : items)
-            if (item.size!=-1)  siteImages.add(item);
+            if (item.size!=SiteImageItem.UNKNOWN)  siteImages.add(item);
             else  loadImage(con, siteImages, item);
 
         return siteImages;
@@ -368,12 +398,12 @@ public class Application
     public static int parseSize(String value)  {
         int x=0;
         while (x!=value.length() && value.charAt(x)>='0' && value.charAt(x)<='9')  x++;
-        if (x==0 || x+1>=value.length() || value.charAt(x)!='x')  return -1;
+        if (x==0 || x+1>=value.length() || value.charAt(x)!='x')  return SiteImageItem.UNKNOWN;
         String v1 = value.substring(0, x);
         String v2 = value.substring(x+1);
-        if (!v1.equals(v2))  return -1;
+        if (!v1.equals(v2))  return 0;
         int result = Integer.parseInt(v1);
-        return result<=0 || result>=32*1024 ? -1 : result;
+        return result<=0 || result>=32*1024 ? 0 : result;
     }
 
     // One SiteImageItem can produce multiple SiteImageItem-s after loading (ICO case)
@@ -381,21 +411,49 @@ public class Application
     {
         try
         {
+            Connection.Response response = con.url(item.url).execute();
+            String contentType = getPureContentType(response);
+            Format imgFormat = CONTENT_TYPE_FORMATS.get(contentType);
+            loadImage(response, items, item, imgFormat);
+        }
+        catch (Exception e)  {
+            System.out.println("Can't load "+item.url+": "+e.toString());
+        }
+    }
+
+    private static void loadImage(Connection.Response reponse, SiteImages items, SiteImageItem item, Format format)
+    {
+        try
+        {
             //    read content
-            byte[] content = con.url(item.url).execute().bodyAsBytes();
+            byte[] content = reponse.bodyAsBytes();
 
             //    try parse image with jdk first
-            BufferedImage image = ImageIO.read(new ByteArrayInputStream(content));
-            if (image!=null)  {
-                checkAndAddImage(items, image, item);
+            if (format != Format.SVG && format != Format.ICO)  {
+                BufferedImage image = ImageIO.read(new ByteArrayInputStream(content));
+                if (image!=null)  {
+                    checkAndAddImage(items, image, item);
+                    return;
+                }
+            }
+
+            //    try to parse SVG
+            if (format == Format.SVG)  {
+                SVGUniverse universe = new SVGUniverse();
+                SVGDiagram diagram = universe.getDiagram(universe.loadSVG(new ByteArrayInputStream(content), item.url));
+                if (diagram.getWidth()!=diagram.getHeight())  throw new ExternalException(
+                    "Image has different sizes: "+diagram.getWidth()+"x"+diagram.getHeight());
+                items.add(new SiteImageItem(SiteImageItem.ANY_SIZE, item.priority, item.url, diagram));
                 return;
             }
 
             //    parse with image4j if no support with jdk (ICO)
-            java.util.List<BufferedImage> images = ICODecoder.read(new ByteArrayInputStream(content));
-            if (images.size()!=0)  {
-                for (BufferedImage iconImage : images)  checkAndAddImage(items, iconImage, item);
-                return;
+            if (format == Format.ICO || format == null)  {
+                java.util.List<BufferedImage> images = ICODecoder.read(new ByteArrayInputStream(content));
+                if (images.size()!=0)  {
+                    for (BufferedImage iconImage : images)  checkAndAddImage(items, iconImage, item);
+                    return;
+                }
             }
 
             //    unsupported image
@@ -410,21 +468,66 @@ public class Application
         if (image.getWidth()!=image.getHeight())  throw new ExternalException(
                 "Image has different sizes: "+image.getWidth()+"x"+image.getHeight());
         int size = image.getWidth();
-        if (item.size != -1 && size != item.size)  System.out.println("Loaded image size differs from declared (" + size + " <> " + item.size + ") for " + item.url);
+        if (item.size != SiteImageItem.UNKNOWN && size != item.size)  System.out.println("Loaded image size differs from declared (" + size + " <> " + item.size + ") for " + item.url);
         items.add(new SiteImageItem(size, item.priority, item.url, image));
+    }
+
+    private static String getPureContentType(Connection.Response response)  {
+        String contentType = response.contentType();
+        if (contentType == null)  return null;
+        int i = contentType.indexOf(';');
+        return i != -1 ? contentType.substring(0, i).trim() : contentType;
     }
 
 
     //                --------    image processing    --------
 
+    public static BufferedImage drawSvg(SVGDiagram diagram, int size) throws SVGException
+    {
+        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        AffineTransform at = new AffineTransform();
+        at.setToScale(size/diagram.getWidth(), size/diagram.getWidth());
+        g2.transform(at);
+        diagram.render(g2);
+        return image;
+    }
+
+    public static BufferedImage getScaledImage(BufferedImage image, int drawWidth, int drawHeight) {
+        return getScaledImage(image, drawWidth, drawHeight, drawWidth, drawHeight);
+    }
+
+    public static BufferedImage getScaledImage(BufferedImage image, int drawWidth, int drawHeight, int destWidth, int destHeight)
+    {
+        int imageWidth  = image.getWidth();
+        int imageHeight = image.getHeight();
+
+        if (imageWidth == drawWidth && imageHeight == drawHeight && imageWidth == destWidth && imageHeight == destHeight)
+            return image;
+
+        double scaleX = (double)drawWidth/imageWidth;
+        double scaleY = (double)drawHeight/imageHeight;
+        AffineTransform scaleTransform = new AffineTransform();
+        if (destWidth != drawWidth || destHeight != drawHeight)  {
+            scaleTransform.translate((destWidth - drawWidth)/2.0, (destHeight - drawHeight)/2.0);
+        }
+        scaleTransform.scale(scaleX, scaleY);
+        AffineTransformOp bilinearScaleOp = new AffineTransformOp(scaleTransform, AffineTransformOp.TYPE_BILINEAR);
+
+        return bilinearScaleOp.filter(
+                image,
+                new BufferedImage(destWidth, destHeight, image.getType()));
+    }
+
     // image must be TYPE_INT_ARGB
-    private static void generateButton(BufferedImage image, int size)
+    private static void drawButton(BufferedImage image, int size)
     {
         int[] data = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
         for (int y=0, i=0; y<size; y++)  {
             for (int x=0; x<size; x++, i++)  {
                 //  calc distance to border
-                float border = 0;
+                float border;
                 float borderWidth = 1;
                 float borderRad = size * 0.175f;
                 float borderAlpha = 0.25f;

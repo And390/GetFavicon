@@ -6,6 +6,8 @@ import java.awt.image.BufferedImage;
 
 import static org.junit.Assert.assertEquals;
 
+import static getfavicon.Application.SiteImageItem.UNKNOWN;
+
 /**
  * User: And390
  * Date: 14.06.15
@@ -16,14 +18,14 @@ public class TestImages
 
     @Test
     public void parseSize()  {
-        assertEquals("", -1, Application.parseSize(""));
-        assertEquals("", -1, Application.parseSize("?"));
-        assertEquals("", -1, Application.parseSize("x"));
-        assertEquals("", -1, Application.parseSize("2x"));
-        assertEquals("", -1, Application.parseSize("x2"));
+        assertEquals("", UNKNOWN, Application.parseSize(""));
+        assertEquals("", UNKNOWN, Application.parseSize("?"));
+        assertEquals("", UNKNOWN, Application.parseSize("x"));
+        assertEquals("", UNKNOWN, Application.parseSize("2x"));
+        assertEquals("", UNKNOWN, Application.parseSize("x2"));
         assertEquals("", 2, Application.parseSize("2x2"));
-        assertEquals("", -1, Application.parseSize("4x2"));
-        assertEquals("", -1, Application.parseSize("0x0"));
+        assertEquals("", 0, Application.parseSize("4x2"));
+        assertEquals("", 0, Application.parseSize("0x0"));
         assertEquals("", 225, Application.parseSize("225x225"));
     }
 
@@ -61,7 +63,7 @@ public class TestImages
         BufferedImage source = new BufferedImage (RandomUtil.random(1, 256), RandomUtil.random(1, 256), BufferedImage.TYPE_3BYTE_BGR);
         int width = RandomUtil.random(1, 256);
         int height = RandomUtil.random(1, 256);
-        BufferedImage result = Application.getScaledImage(source, width, height, null);
+        BufferedImage result = Application.getScaledImage(source, width, height);
         assertEquals("", width, result.getWidth());
         assertEquals("", height, result.getHeight());
     }
