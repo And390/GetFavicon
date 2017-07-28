@@ -1,9 +1,12 @@
 import getfavicon.Application;
+import getfavicon.ServiceParser;
 import org.junit.Test;
+import utils.Util;
 
 import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.FileOutputStream;
+import java.util.Map;
 
 /**
  * And390 - 29.06.2015
@@ -13,41 +16,37 @@ public class RunApplication
     @Test
     public void main() throws Exception
     {
-        BufferedImage result = Application.process(new Application.Request("vk.com"), "32", "png", false);
-        try (FileOutputStream output = new FileOutputStream("result.png"))
-        {  ImageIO.write(result, "PNG", output);  }
+        processAndWrite("vk.com");
     }
 
     @Test
     public void button() throws Exception
     {
-        BufferedImage result = Application.process(new Application.Request("metro.yandex.ru"), "32", "png", true);
-        try (FileOutputStream output = new FileOutputStream("result.png"))
-        {  ImageIO.write(result, "PNG", output);  }
+        processAndWrite("metro.yandex.ru", 32, "png", true, "result.png");
     }
 
     @Test
     public void yandexMail() throws Exception
     {
-        BufferedImage result = Application.process(new Application.Request("mail.yandex.ru"), "32", "png", true);
-        try (FileOutputStream output = new FileOutputStream("result.png"))
-        {  ImageIO.write(result, "PNG", output);  }
+        processAndWrite("http://mail.yandex.ru");
     }
 
     @Test
     public void directImage() throws Exception
     {
-        BufferedImage result = Application.process(new Application.Request("https://github.com/fluidicon.png"), "32", "png", true);
-        try (FileOutputStream output = new FileOutputStream("result.png"))
-        {  ImageIO.write(result, "PNG", output);  }
+        processAndWrite("https://github.com/fluidicon.png");
     }
 
     @Test
     public void svg() throws Exception
     {
-        BufferedImage result = Application.process(new Application.Request("https://assets-cdn.github.com/pinned-octocat.svg"), "256", "png", false);
-        try (FileOutputStream output = new FileOutputStream("result.png"))
-        {  ImageIO.write(result, "PNG", output);  }
+        processAndWrite("https://assets-cdn.github.com/pinned-octocat.svg");
+    }
+
+    @Test
+    public void redirectDomain() throws Exception
+    {
+        processAndWrite("https://yastatic.net");
     }
 
     @Test
@@ -55,5 +54,30 @@ public class RunApplication
     {
         Application.SiteImages images = Application.loadImages("http://vk.com");
         for (Application.SiteImageItem item : images)  System.out.println(item.toString());
+    }
+
+    @Test
+    public void loadServiceImages() throws Exception
+    {
+        ServiceParser.loadServiceImages();
+
+        File dir = new File("result");
+        if (dir.exists())  Util.clearDir(dir);
+        else  Util.createDir(dir);
+
+        for (String provider : ServiceParser.services.keySet())  {
+            Map<String, Application.ServiceImages> serviceImages = ServiceParser.services.get(provider);
+            for (String service : serviceImages.keySet())  {
+                processAndWrite(provider+"/"+service, 64, "png", true, "result/"+provider+"_"+service+".png");
+            }
+        }
+    }
+
+    private static void processAndWrite(String url) throws Exception  {  processAndWrite(url, 32, "png", false, "result.png");  }
+
+    private static void processAndWrite(String url, int size, String format, boolean button, String outputFileName) throws Exception
+    {
+        try (FileOutputStream output = new FileOutputStream(outputFileName))
+        {  ImageIO.write(Application.process(new Application.Request(url), ""+size, format, button), format, output);  }
     }
 }

@@ -1,0 +1,18 @@
+<svg width='56' height='56' viewBox='0 0 56 56' xmlns='http://www.w3.org/2000/svg'
+     xmlns:xlink='http://www.w3.org/1999/xlink'>
+    <defs>
+        <path id='a' d='M5.267.171l5.44 5.444L0 10.882z'/>
+    </defs>
+    <g fill='none' fill-rule='evenodd'>
+        <path fill='#F33' d='M14.126 17.662l32.101 32.102 5.44-5.441-32.1-32.102z'/>
+        <path fill='#000' d='M20.128 5.692L4.332 21.53l7.638 7.755L35.62 5.692z'/>
+        <path fill='#FC0' fill-rule='nonzero' d='M46.227 6.236L12.863 39.6l5.441 5.44 33.364-33.363z'/>
+        <g transform='translate(7.597 39.426)'>
+            <mask id='b' fill='#fff'>
+                <use xlink:href='#a'/>
+            </mask>
+            <use fill='#EFB30E' xlink:href='#a'/>
+            <circle fill='#000' mask='url(#b)' cy='10.882' r='5.441'/>
+        </g>
+    </g>
+</svg>

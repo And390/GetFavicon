@@ -1,7 +1,11 @@
 package getfavicon;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.org.apache.xml.internal.security.exceptions.Base64DecodingException;
 import net.sf.image4j.codec.ico.ICOEncoder;
 import utils.ByteArray;
+import utils.ExternalException;
 
 import javax.imageio.ImageIO;
 import javax.servlet.ServletContext;
@@ -14,7 +18,10 @@ import java.awt.image.BufferedImage;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static getfavicon.Application.Format;
 
@@ -40,13 +47,16 @@ public class Servlet extends HttpServlet
 
     private byte[] mainPage;
 
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+
     @Override
     public void init() throws ServletException {
         try  {
             ServletContext context = getServletContext();
             mainPage = ByteArray.read(context.getResourceAsStream("index.html"));
+            ServiceParser.loadServiceImages();
         }
-        catch (IOException e)  {  throw new ServletException(e);  }
+        catch (IOException|ExternalException|Base64DecodingException e)  {  throw new ServletException(e);  }
     }
 
     private static void close(Closeable closeable)  {
@@ -68,6 +78,28 @@ public class Servlet extends HttpServlet
         if (url.isEmpty() || url.equals("index.html") || url.equals("index.htm"))  {
             response.setContentType("text/html; charset=ASCII");
             response.getOutputStream().write(mainPage);
+            return;
+        }
+
+        //    services get api point
+        if (url.equals("services") || url.equals("services/"))  {
+            List<ProviderWrapper> result = new ArrayList<>();
+            for (String providerName : ServiceParser.services.keySet())  {
+                Map<String, Application.ServiceImages> providerServices = ServiceParser.services.get(providerName);
+                ProviderWrapper provider = new ProviderWrapper(providerName);
+                for (String service : providerServices.keySet())
+                    provider.services.add(new ServiceWrapper(service, providerServices.get(service)));
+                result.add(provider);
+            }
+
+            response.setContentType("application/json; charset=UTF-8");
+            try  {  objectMapper.writeValue(response.getOutputStream(), result);  }
+            catch (JsonProcessingException e)  {
+                e.printStackTrace();
+                response.setStatus(500);
+                response.setContentType("plain/text; charset=UTF-8");
+                response.getOutputStream().write("Internal Server Error".getBytes("UTF-8"));
+            }
             return;
         }
 
@@ -97,6 +129,26 @@ public class Servlet extends HttpServlet
             response.setStatus(statusCode);
             response.setContentType(imageContentTypes.get(appRequest.format));
             ImageIO.write(image, appRequest.format.toString(), response.getOutputStream());
+        }
+    }
+
+    public static class ProviderWrapper
+    {
+        public String code;
+        public List<ServiceWrapper> services = new ArrayList<>();
+        public ProviderWrapper(String code_)  {  code = code_;  }
+    }
+
+    public static class ServiceWrapper
+    {
+        public String code;
+        public String name;
+        public String url;
+
+        public ServiceWrapper(String code_, Application.ServiceImages source)  {
+            code = code_;
+            name = source.name;
+            url = source.url;
         }
     }
 }

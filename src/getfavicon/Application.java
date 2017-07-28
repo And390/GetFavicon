@@ -1,5 +1,6 @@
 package getfavicon;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.cache.*;
 import com.kitfox.svg.SVGDiagram;
 import com.kitfox.svg.SVGException;
@@ -114,8 +115,8 @@ public class Application
         public final int size;
         public final int priority;
         public String url;
-        public final BufferedImage image;
-        public final SVGDiagram diagram;
+        @JsonIgnore public final BufferedImage image;
+        @JsonIgnore public final SVGDiagram diagram;
         public SiteImageItem(int size_, int priority_, String url_)  {  size = size_;  priority = priority_;  url = url_;  image = null;  diagram = null;  }
         public SiteImageItem(int size_, int priority_, String url_, BufferedImage image_)  {  size = size_;  priority = priority_;  url = url_;  image = image_;  diagram = null;  }
         public SiteImageItem(int size_, int priority_, String url_, SVGDiagram diagram_)  {  size = size_;  priority = priority_;  url = url_;  image = null;  diagram = diagram_;  }
@@ -142,9 +143,17 @@ public class Application
         }
     }
 
+    public static class ServiceImages extends SiteImages
+    {
+        public final String name;
+        public final String url;
+
+        public ServiceImages(String name, String url)  {  this.name=name;  this.url=url;  }
+    }
+
     private static LoadingCache<String, SiteImages> cache = CacheBuilder.newBuilder()
         .maximumSize(10000)    // максимальное количество элементов в кэше
-        .concurrencyLevel(1)  // следует установить равным количеству обрабатывающих потоков
+        .concurrencyLevel(10)  // следует установить равным количеству обрабатывающих потоков
         .expireAfterAccess(1, TimeUnit.DAYS)  // через день данные удал€ютс€ из кэша
         .removalListener(new RemovalListener<String, SiteImages>() {
             public void onRemoval(RemovalNotification<String, SiteImages> removalNotification) {
@@ -162,32 +171,52 @@ public class Application
     public static BufferedImage process(Request request, String requestSize, String requestFormat, boolean button)
             throws ExternalException, IOException, SVGException
     {
-        //    add default protocol
-        int i = request.url.indexOf("://");
-        if (i==-1 || request.url.lastIndexOf(":", i-1)!=-1 || request.url.lastIndexOf("/", i-1)!=-1) {
-            request.url = "http://" + request.url;
-        }
-        //    remove ending slash
-        request.url = Util.cutIfEnds(request.url, "/");
-        //    remove www prefix
-        request.url = request.url.startsWith("http://www.") ? "http://" + request.url.substring("http://www.".length()) :
-                      request.url.startsWith("https://www.") ? "https://" + request.url.substring("https://www.".length()) : request.url;
-
         //    parse parameters
         try  {
             if (request.url.isEmpty())  throw new ExternalException ("empty URL");
-            new URL (request.url);
             if (Util.isNotEmpty(requestSize))  request.size = Util.getInt(requestSize, "size", 1, 1024);
             if (Util.isNotEmpty(requestFormat))  request.format = Util.get(requestFormat.toUpperCase(), "format", REQUEST_FORMAT_MAP);
         }
-        catch (ExternalException|MalformedURLException e)  {  throw new BadRequestException (e.getMessage());  }
+        catch (ExternalException e)  {  throw new BadRequestException (e.getMessage());  }
 
-        //    get icon images from cache or load
         SiteImages siteImages;
-        try  {  siteImages = cache.get(request.url);  }
-        catch (ExecutionException e)  {
-            if (e.getCause() instanceof IOException)  throw new ExternalException (e.getCause());
-            else  throw new RuntimeException (e.getCause());
+        //    services
+        int s = request.url.indexOf('/');
+        Map<String, ServiceImages> serviceImages = s==-1 ? null : ServiceParser.services.get(request.url.substring(0, s));
+        if (serviceImages != null)
+        {
+            //    get service name
+            request.url = Util.cutIfEnds(request.url, "/");
+            String service = request.url.substring(s+1);
+            if (service.isEmpty())  throw new ExternalException("Empty service name for " + request.url);
+
+            //    get loaded images
+            siteImages = serviceImages.get(service);
+            if (siteImages == null)  throw new ExternalException("Unknow service: " + request.url);
+        }
+        //    sites
+        else
+        {
+            //    add default protocol
+            int i = request.url.indexOf("://");
+            if (i==-1 || request.url.lastIndexOf(":", i-1)!=-1 || request.url.lastIndexOf("/", i-1)!=-1) {
+                request.url = "http://" + request.url;
+            }
+            //    check URL
+            try  {  new URL (request.url);  }
+            catch (MalformedURLException e)  {  throw new BadRequestException (e.getMessage());  }
+            //    remove ending slash
+            request.url = Util.cutIfEnds(request.url, "/");
+            //    remove www prefix
+            request.url = request.url.startsWith("http://www.") ? "http://" + request.url.substring("http://www.".length()) :
+                          request.url.startsWith("https://www.") ? "https://" + request.url.substring("https://www.".length()) : request.url;
+
+            //    get icon images from cache or load
+            try  {  siteImages = cache.get(request.url);  }
+            catch (ExecutionException e)  {
+                if (e.getCause() instanceof IOException)  throw new ExternalException (e.getCause());
+                else  throw new RuntimeException (e.getCause());
+            }
         }
 
         //    find image
@@ -280,22 +309,28 @@ public class Application
 
     //                --------    image loading    --------
 
-    public static SiteImages loadImages(String url) throws IOException {
+    public static SiteImages loadImages(String url) throws IOException  {  return loadImages(url, new SiteImages());  }
+
+    public static SiteImages loadImages(String url, SiteImages siteImages) throws IOException
+    {
         //    execute
         Connection con = getConnection(url);
         Connection.Response response = con.execute();
         String contentType = getPureContentType(response);
         Format imgFormat = CONTENT_TYPE_FORMATS.get(contentType);
         if (imgFormat != null || contentType.startsWith("image/"))  {
-            SiteImages siteImages = new SiteImages();
             loadImage(response, siteImages, new SiteImageItem(SiteImageItem.UNKNOWN, 1, url), imgFormat);
             return siteImages;
         }
         Document document = response.parse();
+        return loadImages(con, document, siteImages);
+    }
 
+    public static SiteImages loadImages(Connection con, Document document, SiteImages siteImages) throws IOException
+    {
         //    parse HTML
         List<SiteImageItem> items = new ArrayList<> ();
-        String base = url;
+        String base = document.baseUri();
         SiteImageItem lastOgImage = null;
         int lastOgImageWidth = 0;
         int lastOgImageHeight = 0;
@@ -364,8 +399,7 @@ public class Application
                 }
             }
             else if (elem.tagName().equals("base"))  {
-                base = elem.attr("href");
-                if (base.isEmpty())  base = url;
+                if (!elem.attr("href").isEmpty())  base = elem.attr("href");
             }
         }
 
@@ -375,35 +409,11 @@ public class Application
         catch (MalformedURLException e)  {}  //ignore malformed base URLs
 
         //    order images by size (see SiteImages.add), load images without sizes
-        SiteImages siteImages = new SiteImages();
         for (SiteImageItem item : items)
             if (item.size!=SiteImageItem.UNKNOWN)  siteImages.add(item);
             else  loadImage(con, siteImages, item);
 
         return siteImages;
-    }
-
-    private static Connection getConnection(String url)
-    {
-        return Jsoup.connect(url)
-            .ignoreHttpErrors(true)
-            .ignoreContentType(true)
-            .userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
-            .referrer("http://www.google.com")
-            .timeout(12000);
-            //.followRedirects(true)
-    }
-
-    // parse strings like '32x32'
-    public static int parseSize(String value)  {
-        int x=0;
-        while (x!=value.length() && value.charAt(x)>='0' && value.charAt(x)<='9')  x++;
-        if (x==0 || x+1>=value.length() || value.charAt(x)!='x')  return SiteImageItem.UNKNOWN;
-        String v1 = value.substring(0, x);
-        String v2 = value.substring(x+1);
-        if (!v1.equals(v2))  return 0;
-        int result = Integer.parseInt(v1);
-        return result<=0 || result>=32*1024 ? 0 : result;
     }
 
     // One SiteImageItem can produce multiple SiteImageItem-s after loading (ICO case)
@@ -439,11 +449,7 @@ public class Application
 
             //    try to parse SVG
             if (format == Format.SVG)  {
-                SVGUniverse universe = new SVGUniverse();
-                SVGDiagram diagram = universe.getDiagram(universe.loadSVG(new ByteArrayInputStream(content), item.url));
-                if (diagram.getWidth()!=diagram.getHeight())  throw new ExternalException(
-                    "Image has different sizes: "+diagram.getWidth()+"x"+diagram.getHeight());
-                items.add(new SiteImageItem(SiteImageItem.ANY_SIZE, item.priority, item.url, diagram));
+                loadSvg(content, items, item);
                 return;
             }
 
@@ -464,11 +470,45 @@ public class Application
         }
     }
 
-    private static void checkAndAddImage(SiteImages items, BufferedImage image, SiteImageItem item) throws ExternalException  {
-        if (image.getWidth()!=image.getHeight())  throw new ExternalException(
-                "Image has different sizes: "+image.getWidth()+"x"+image.getHeight());
+    public static void loadSvg(byte[] content, SiteImages items, SiteImageItem item) throws ExternalException, IOException
+    {
+        SVGUniverse universe = new SVGUniverse();
+        SVGDiagram diagram = universe.getDiagram(universe.loadSVG(new ByteArrayInputStream(content), item.url));
+        if (diagram.getWidth()!=diagram.getHeight())  throw new ExternalException(
+            "Image has different sizes: "+diagram.getWidth()+"x"+diagram.getHeight());
+        items.add(new SiteImageItem(SiteImageItem.ANY_SIZE, item.priority, item.url, diagram));
+    }
+
+    public static Connection getConnection(String url)
+    {
+        return Jsoup.connect(url)
+            .ignoreHttpErrors(true)
+            .ignoreContentType(true)
+            .userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
+            .referrer("http://www.google.com")
+            .timeout(12000);
+            //.followRedirects(true)
+    }
+
+    // parse strings like '32x32'
+    public static int parseSize(String value)  {
+        int x=0;
+        while (x!=value.length() && value.charAt(x)>='0' && value.charAt(x)<='9')  x++;
+        if (x==0 || x+1>=value.length() || value.charAt(x)!='x')  return SiteImageItem.UNKNOWN;
+        String v1 = value.substring(0, x);
+        String v2 = value.substring(x+1);
+        if (!v1.equals(v2))  return 0;
+        int result = Integer.parseInt(v1);
+        return result<=0 || result>=32*1024 ? 0 : result;
+    }
+
+    public static void checkAndAddImage(SiteImages items, BufferedImage image, SiteImageItem item) throws ExternalException  {
+        if (image.getWidth()!=image.getHeight())  {  //ignore
+            System.out.println("Image has different sizes ("+image.getWidth()+"x"+image.getHeight()+"): "+item.url);
+            return;
+        }
         int size = image.getWidth();
-        if (item.size != SiteImageItem.UNKNOWN && size != item.size)  System.out.println("Loaded image size differs from declared (" + size + " <> " + item.size + ") for " + item.url);
+        if (item.size != SiteImageItem.UNKNOWN && item.size != SiteImageItem.ANY_SIZE && size != item.size)  System.out.println("Loaded image size differs from declared (" + size + " <> " + item.size + ") for " + item.url);
         items.add(new SiteImageItem(size, item.priority, item.url, image));
     }
 
