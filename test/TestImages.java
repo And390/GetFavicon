@@ -5,6 +5,7 @@ import utils.RandomUtil;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
@@ -78,5 +79,11 @@ public class TestImages
         try (FileOutputStream out = new FileOutputStream("result.png")) {
             ImageIO.write(image, Application.Format.PNG.toString().toLowerCase(), out);
         }
+    }
+
+    @Test
+    public void checkButtonShape() throws IOException {
+        BufferedImage image = ImageIO.read(new File("test_data/instagram.png"));
+        System.out.println( Application.checkButtonShape(image, image.getWidth()) );
     }
 }

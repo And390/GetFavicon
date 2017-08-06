@@ -66,7 +66,7 @@ public class TestApplication
         assertEquals("", expected, images);
 
         //    try get image with lie size and see the difference
-        Application.getAppropriateImage(images, 152);
+        Application.getAppropriateImage(images, 152, 152);
 
         expected = new Application.SiteImages ();
         expected.add(new Application.SiteImageItem(32, 1, BASE+"favicon.png"));

@@ -121,9 +121,17 @@ public class Application
         public String url;
         @JsonIgnore public final BufferedImage image;
         @JsonIgnore public final SVGDiagram diagram;
-        public SiteImageItem(int size_, int priority_, String url_)  {  size = size_;  priority = priority_;  url = url_;  image = null;  diagram = null;  }
-        public SiteImageItem(int size_, int priority_, String url_, BufferedImage image_)  {  size = size_;  priority = priority_;  url = url_;  image = image_;  diagram = null;  }
-        public SiteImageItem(int size_, int priority_, String url_, SVGDiagram diagram_)  {  size = size_;  priority = priority_;  url = url_;  image = null;  diagram = diagram_;  }
+        @JsonIgnore public final boolean buttonShape;
+
+        public SiteImageItem(int size_, int priority_, String url_)  {  size = size_;  priority = priority_;  url = url_;  image = null;  diagram = null;  buttonShape = false;  }
+        public SiteImageItem(int size_, int priority_, String url_, BufferedImage image_)  {
+            size = size_;  priority = priority_;  url = url_;  image = image_;  diagram = null;
+            buttonShape = checkButtonShape(image_, size);
+        }
+        public SiteImageItem(int size_, int priority_, String url_, SVGDiagram diagram_)  throws SVGException  {
+            size = size_;  priority = priority_;  url = url_;  image = null;  diagram = diagram_;
+            buttonShape = checkButtonShape(diagram_, Math.round(Math.max(diagram_.getWidth(), diagram_.getHeight())));
+        }
 
         public boolean isLoaded()  {  return image != null || diagram != null;  }
 
@@ -237,7 +245,8 @@ public class Application
 
         //    find image
         int requiredSize = button ? Math.round(request.size * 0.875f) : request.size;
-        SiteImageItem imageItem = getAppropriateImage(siteImages, requiredSize);
+        SiteImageItem imageItem = getAppropriateImage(siteImages, requiredSize, request.size);
+        if (imageItem.buttonShape)  requiredSize = request.size;
 
         //    draw svg if needed
         BufferedImage original = imageItem.image;
@@ -295,7 +304,7 @@ public class Application
             size>foundSize;
     }
 
-    public static SiteImageItem getAppropriateImage(SiteImages images, int requestSize) throws NotFoundException
+    public static SiteImageItem getAppropriateImage(SiteImages images, int requestSize, int buttonShapeSize) throws NotFoundException
     {
         synchronized (images)  {  //todo плохо, что при загрузке доп. изображений блокируется доступ на чтение к уже загруженным
             while (true)  {
@@ -303,15 +312,15 @@ public class Application
 
                 //    try to get equal or greater size
                 int i=0;
-                for (; i!=images.size() && images.get(i).size < requestSize; )  i++;
+                for (; i!=images.size() && images.get(i).size < (images.get(i).buttonShape ? buttonShapeSize : requestSize); )  i++;
                 //  if size is not exactly the same and there is a scalable image - use scalable
-                if ((i==images.size() || images.get(i).size != requestSize) && images.getScalable()!=-1)  i = images.getScalable();
+                if ((i==images.size() || images.get(i).size != (images.get(i).buttonShape ? buttonShapeSize : requestSize)) && images.getScalable()!=-1)  i = images.getScalable();
                 //  if no, get last
                 else if (i==images.size())  i--;
                 //  if size is not multiple of requested size then try to find it bigger
                 else  {
                     for (int j=i; j!=images.size(); j++)
-                        if (images.get(j).size % requestSize == 0)  {  i = j;  break;  }
+                        if (images.get(j).size % (images.get(j).buttonShape ? buttonShapeSize : requestSize) == 0)  {  i = j;  break;  }
                 }
 
                 //    return if loaded or else load and refind
@@ -491,10 +500,10 @@ public class Application
         }
     }
 
-    public static void loadSvg(byte[] content, SiteImages items, SiteImageItem item) throws ExternalException, IOException  {
+    public static void loadSvg(byte[] content, SiteImages items, SiteImageItem item) throws ExternalException, IOException, SVGException  {
         loadSvg(content, items, item, false);
     }
-    public static void loadSvg(byte[] content, SiteImages items, SiteImageItem item, boolean allowNonQuad) throws ExternalException, IOException
+    public static void loadSvg(byte[] content, SiteImages items, SiteImageItem item, boolean allowNonQuad) throws ExternalException, IOException, SVGException
     {
         SVGUniverse universe = new SVGUniverse();
         SVGDiagram diagram = universe.getDiagram(universe.loadSVG(new ByteArrayInputStream(content), item.url));
@@ -684,7 +693,7 @@ public class Application
         private static final int DETECT_COLOR_THRESHOLD = Math.round(255 * 3 * 0.90f);
         private static final int REPLACE_COLOR_THRESHOLD = Math.round(255 * 3 * 0.70f);
         private static final float DETECT_BORDER_THRESHOLD = 0.1f;
-        private static final float DETECT_PIXELS_THRESHOLD = 0.9f;
+        private static final float DETECT_PIXELS_THRESHOLD = 0.85f;
 
         int[] data;
         boolean[] passed;
@@ -708,20 +717,23 @@ public class Application
 
         void replace()
         {
-            if (check())  {
-                //    Background detected, add alpha
-                for (int i=0; i<data.length; i++)  {
-                    int p = data[i];
-                    int r = (p >> 16) & 0xFF;
-                    int g = (p >> 8) & 0xFF;
-                    int b = p & 0xFF;
-                    if (r + g + b >= REPLACE_COLOR_THRESHOLD)  {
-                        float a = (255*3 - (r + g + b)) / (float)(255*3 - REPLACE_COLOR_THRESHOLD);
-                        r = Math.round((1 - (1 - r/255f) / a) * 255);
-                        g = Math.round((1 - (1 - g/255f) / a) * 255);
-                        b = Math.round((1 - (1 - b/255f) / a) * 255);
-                        data[i] = b + (g << 8) + (r << 16) + (Math.round(a*255) << 24);
-                    }
+            if (check())  doReplace();
+        }
+
+        void doReplace()
+        {
+            //    Background detected, add alpha
+            for (int i=0; i<data.length; i++)  {
+                int p = data[i];
+                int r = (p >> 16) & 0xFF;
+                int g = (p >> 8) & 0xFF;
+                int b = p & 0xFF;
+                if (r + g + b >= REPLACE_COLOR_THRESHOLD)  {
+                    float a = (255*3 - (r + g + b)) / (float)(255*3 - REPLACE_COLOR_THRESHOLD);
+                    r = Math.round((1 - (1 - r/255f) / a) * 255);
+                    g = Math.round((1 - (1 - g/255f) / a) * 255);
+                    b = Math.round((1 - (1 - b/255f) / a) * 255);
+                    data[i] = b + (g << 8) + (r << 16) + (Math.round(a*255) << 24);
                 }
             }
         }
@@ -773,4 +785,64 @@ public class Application
             return false;
         }
     }
+
+    public static boolean checkButtonShape(SVGDiagram diagram, int size) throws SVGException
+    {
+        BufferedImage image = drawSvg(diagram, size);
+        return checkButtonShape(image, size);
+    }
+    public static boolean checkButtonShape(BufferedImage image, int size)
+    {
+        // image has another type - copy image with necessary type, then check and replace white background
+        // image has necessary type - check white background, copy image if need replace background, then replace
+        WhiteBackgroundReplacer whiteBackgroundReplacer = null;
+        boolean needChangeImageType = image.getType() != BufferedImage.TYPE_INT_ARGB;
+        boolean needReplaceWhite = false;
+        if (!needChangeImageType)  {
+            whiteBackgroundReplacer = new WhiteBackgroundReplacer(image);
+            needReplaceWhite = whiteBackgroundReplacer.check();
+        }
+        if (needChangeImageType || needReplaceWhite)  {
+            BufferedImage old = image;
+            image = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
+            image.getGraphics().drawImage(old, 0, 0, null);
+        }
+        if (whiteBackgroundReplacer==null)  {
+            whiteBackgroundReplacer = new WhiteBackgroundReplacer(image);
+            needReplaceWhite = whiteBackgroundReplacer.check();
+        }
+        if (needReplaceWhite)  whiteBackgroundReplacer.doReplace();
+
+        final float THRESHOLD = 0.66f;
+        int[] data = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+        check:  for (int y : new int[] { 0, size-1})  {
+            find:  for (int d=0; d<=1 && d*2 < size; d++)  {
+                int line = (y + (y==0 ? d : -d)) * size;
+                int x1 = d;
+                while (x1 < size && getAlpha(data[line+x1]) == 0)  x1++;
+                int x2 = size - 1 - d;
+                while (x2 > x1 && getAlpha(data[line+x2]) == 0)  x2--;
+                for (int x=x1+1; x<x2; x++)  if (getAlpha(data[line+x])==0)  continue find;
+                if ((x2 - x1) / (float)(size - d*2) < THRESHOLD)  continue;
+                continue check;  //found line - check next line
+            }
+            return false;
+        }
+        check:  for (int x : new int[] { 0, size-1})  {
+            find:  for (int d=0; d<=1 && d*2 < size; d++)  {
+                int shift = x + (x==0 ? d : -d);
+                int y1 = d;
+                while (y1 < size && getAlpha(data[y1*size+shift]) == 0)  y1++;
+                int y2 = size - 1 - d;
+                while (y2 > y1 && getAlpha(data[y2*size+shift]) == 0)  y2--;
+                for (int y=y1+1; y<y2; y++)  if (getAlpha(data[y*size+shift])==0)  continue find;
+                if ((y2 - y1) / (float)size < THRESHOLD)    continue;
+                continue check;  //found line - check next line
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private static int getAlpha(int rgba)  {  return (rgba >> 24) & 0xFF;  }
 }

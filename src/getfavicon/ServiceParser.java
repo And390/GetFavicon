@@ -1,5 +1,6 @@
 package getfavicon;
 
+import com.kitfox.svg.SVGException;
 import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -29,7 +30,7 @@ public class ServiceParser
     public static final Map<String, Application.ServiceImages> otherServices = new LinkedHashMap<>();
     public static final Map<String, Application.ServiceImages> servicesByDomain = new LinkedHashMap<>();
 
-    public static void loadServiceImages() throws IOException, ExternalException
+    public static void loadServiceImages() throws IOException, ExternalException, SVGException
     {
         loadGoogleServices();
         loadYahooServices();
@@ -94,7 +95,7 @@ public class ServiceParser
 
     //        ----    Yandex    ----
 
-    private static void loadYandexServices() throws IOException, ExternalException
+    private static void loadYandexServices() throws IOException, ExternalException, SVGException
     {
         Map<String, Application.ServiceImages> serviceImages = new LinkedHashMap<>();
         services.put("yandex", serviceImages);
@@ -214,6 +215,9 @@ public class ServiceParser
         Connection con = Application.getConnection(allURL.toString());
         Document doc = con.get();
 
+        //  add home service
+        serviceImages.put("home", loadServiceImages(con, doc, "Mail.Ru", "https://mail.ru", "MailRu"));
+
         Element projects = doc.getElementById("projects");
         //Pattern CSS_RULE_ICON_PATTERN = Pattern.compile("\\s*background\\s*:\\s*url\\((.+)\\).*");
         for (Element item : projects.getElementsByClass("projects__item"))
@@ -221,7 +225,7 @@ public class ServiceParser
             String href = getAttr(item, "href");
             URL serviceURL = new URL(allURL, href);
             href = serviceURL.toString();
-            String serviceName = getServiceName(serviceURL, "mail.ru", "search");
+            String serviceName = getServiceName(serviceURL, "mail.ru", "home");
             if (serviceName.equals("e"))  serviceName = "mail";
             else if (serviceName.equals("go"))  serviceName = "search";
             if (serviceImages.containsKey(serviceName))  throw new ExternalException("Duplicated service: " + serviceName);
@@ -246,7 +250,7 @@ public class ServiceParser
 
     //        ----    Yahoo    ----
 
-    private static void loadYahooServices() throws IOException, ExternalException
+    private static void loadYahooServices() throws IOException, ExternalException, SVGException
     {
         Map<String, Application.ServiceImages> serviceImages = new LinkedHashMap<>();
         services.put("yahoo", serviceImages);
@@ -267,7 +271,7 @@ public class ServiceParser
             String href = getAttr(link, "href");
             URL serviceURL = new URL(allURL, href);
             href = serviceURL.toString();
-            String serviceName = getServiceName(serviceURL, "yahoo.com", "yahoo");
+            String serviceName = getServiceName(serviceURL, "yahoo.com", "home");
             if (serviceName.equals("edit"))  serviceName = "login";
             else if (serviceURL.getHost().equals("sports.yahoo.com") && serviceURL.getPath().startsWith("/fantasy/"))  serviceName = "fantasy";
             else if (serviceURL.getPath().startsWith("/news/weather/"))  serviceName = "weather";
@@ -288,9 +292,15 @@ public class ServiceParser
                 case "messenger":  images = loadServiceImage(con, title, href, "https://s.yimg.com/ge/new/MESSENGER_ICON.png");  break;
                 case "weather":  images = loadServiceImage(con, title, href, "https://s.yimg.com/ge/new/WEATHER_ICON.png");  break;
                 case "movies":  images = loadServiceImage(con, title, href, "https://s.yimg.com/ge/new/VIEW_ICON.png");  break;
+                case "match":  images = new Application.ServiceImages(title, href);  images.addAll(allImages);;  break;  //TODO match.com is not available from russia
                 default:
-                    images = new Application.ServiceImages(title, href);
-                    images.addAll(allImages);
+                    if (serviceURL.getHost().endsWith(".yahoo.com"))  {
+                        images = new Application.ServiceImages(title, href);
+                        images.addAll(allImages);
+                    }
+                    else  {
+                        images = loadServiceImages(title, href, serviceName);
+                    }
             }
             serviceImages.put(serviceName, images);
         }
@@ -336,8 +346,14 @@ public class ServiceParser
 
     private static void loadOtherServices() throws IOException, ExternalException
     {
+        otherServices.put("google", services.get("google").get("search"));
+        otherServices.put("yahoo", services.get("yahoo").get("home"));
+        otherServices.put("yandex", services.get("yandex").get("search"));
+        otherServices.put("mail", services.get("mail").get("home"));
+
         otherServices.put("bing", loadServiceImage("Bing", "https://www.bing.com/", "https://upload.wikimedia.org/wikipedia/commons/0/07/Bing_favicon.svg"));
         otherServices.put("ebay", loadServiceImage("eBay", "https://www.ebay.com/", "https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg"));
+        otherServices.put("amazon", loadServiceImage("Amazon", "https://www.amazon.com/", "https://upload.wikimedia.org/wikipedia/commons/b/b4/Amazon-icon.png"));
     }
 
 
@@ -417,11 +433,19 @@ public class ServiceParser
     }
 
 
+    private static Application.ServiceImages loadServiceImages(String title, String href, String name) throws IOException, ExternalException
+    {
+        Application.ServiceImages images = new Application.ServiceImages(title, href);
+        Application.loadImages(href, images);
+        if (images.isEmpty())  throw new ExternalException("Icon for '"+name+"' is not found");
+        return images;
+    }
+
     private static Application.ServiceImages loadServiceImages(Connection con, Document doc, String title, String href, String name) throws IOException, ExternalException
     {
         Application.ServiceImages images = new Application.ServiceImages(title, href);
         Application.loadImages(con, doc, images);
-        if (images.isEmpty())  throw new ExternalException("Icon for "+name+" is not found");
+        if (images.isEmpty())  throw new ExternalException("Icon for '"+name+"' is not found");
         return images;
     }
 
@@ -452,7 +476,7 @@ public class ServiceParser
                Util.sliceBeforeLast(host, '.');
     }
 
-    private static void replaceSvg(Application.ServiceImages images, String svg) throws IOException, ExternalException
+    private static void replaceSvg(Application.ServiceImages images, String svg) throws IOException, ExternalException, SVGException
     {
         for (int i=0; i<images.size(); i++)  {
             Application.SiteImageItem image = images.get(i);

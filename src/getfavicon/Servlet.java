@@ -2,6 +2,7 @@ package getfavicon;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kitfox.svg.SVGException;
 import net.sf.image4j.codec.ico.ICOEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,7 +59,7 @@ public class Servlet extends HttpServlet
             mainPage = ByteArray.read(context.getResourceAsStream("/index.html"));
             ServiceParser.loadServiceImages();
         }
-        catch (IOException|ExternalException e)  {  throw new ServletException(e);  }
+        catch (IOException|ExternalException|SVGException e)  {  throw new ServletException(e);  }
     }
 
     private static void close(Closeable closeable)  {
@@ -95,6 +96,7 @@ public class Servlet extends HttpServlet
         if (url.equals("services") || url.equals("services/"))  {
             List<ProviderWrapper> result = new ArrayList<>();
             for (String providerCode : ServiceParser.services.keySet())  {
+                if (providerCode.equals("yahoo"))  continue;  //because of bad icons
                 Map<String, Application.ServiceImages> providerServices = ServiceParser.services.get(providerCode);
                 ProviderWrapper provider = new ProviderWrapper(providerCode, ServiceParser.providerNames.get(providerCode));
                 for (String service : providerServices.keySet())
