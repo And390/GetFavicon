@@ -1,6 +1,10 @@
 out
+build
 *.iws
 *.jar
 *.log
+.gradle
+.idea
 result.*
 *_result.*
+result/*

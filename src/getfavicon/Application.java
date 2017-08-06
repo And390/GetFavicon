@@ -10,6 +10,8 @@ import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import utils.ExternalException;
 import utils.StringList;
 import utils.Util;
@@ -34,6 +36,8 @@ import java.util.concurrent.TimeUnit;
  */
 public class Application
 {
+    private static Logger log = LoggerFactory.getLogger(Servlet.class);
+
     public enum Format { PNG, ICO, GIF, BMP, JPEG, SVG }
 
     public static final Map<String, Format> REQUEST_FORMAT_MAP = new HashMap<>();
@@ -152,16 +156,16 @@ public class Application
     }
 
     private static LoadingCache<String, SiteImages> cache = CacheBuilder.newBuilder()
-        .maximumSize(10000)    // максимальное количество элементов в кэше
-        .concurrencyLevel(10)  // следует установить равным количеству обрабатывающих потоков
-        .expireAfterAccess(1, TimeUnit.DAYS)  // через день данные удаляются из кэша
+        .maximumSize(10000)    // РјР°РєСЃРёРјР°Р»СЊРЅРѕРµ РєРѕР»РёС‡РµСЃС‚РІРѕ СЌР»РµРјРµРЅС‚РѕРІ РІ РєСЌС€Рµ
+        .concurrencyLevel(10)  // СЃР»РµРґСѓРµС‚ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ СЂР°РІРЅС‹Рј РєРѕР»РёС‡РµСЃС‚РІСѓ РѕР±СЂР°Р±Р°С‚С‹РІР°СЋС‰РёС… РїРѕС‚РѕРєРѕРІ
+        .expireAfterAccess(1, TimeUnit.DAYS)  // С‡РµСЂРµР· РґРµРЅСЊ РґР°РЅРЅС‹Рµ СѓРґР°Р»СЏСЋС‚СЃСЏ РёР· РєСЌС€Р°
         .removalListener(new RemovalListener<String, SiteImages>() {
             public void onRemoval(RemovalNotification<String, SiteImages> removalNotification) {
 
             }
         })
         .build(new CacheLoader<String, SiteImages>() {
-            // загрузка отсутствующего элемента в кэше
+            // Р·Р°РіСЂСѓР·РєР° РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‰РµРіРѕ СЌР»РµРјРµРЅС‚Р° РІ РєСЌС€Рµ
             public SiteImages load(String url) throws Exception {
                 return loadImages(url);
             }
@@ -181,18 +185,24 @@ public class Application
 
         SiteImages siteImages;
         //    services
-        int s = request.url.indexOf('/');
-        Map<String, ServiceImages> serviceImages = s==-1 ? null : ServiceParser.services.get(request.url.substring(0, s));
+        String cuttedRequestUrl = Util.cutIfEnds(request.url, "/");
+        int s = cuttedRequestUrl.indexOf('/');
+        Map<String, ServiceImages> serviceImages = s==-1 ? null : ServiceParser.services.get(cuttedRequestUrl.substring(0, s));
         if (serviceImages != null)
         {
             //    get service name
-            request.url = Util.cutIfEnds(request.url, "/");
-            String service = request.url.substring(s+1);
-            if (service.isEmpty())  throw new ExternalException("Empty service name for " + request.url);
+            request.url = cuttedRequestUrl;
+            String service = cuttedRequestUrl.substring(s+1);
+            if (service.isEmpty())  throw new BadRequestException("Empty service name for " + request.url);
 
             //    get loaded images
             siteImages = serviceImages.get(service);
-            if (siteImages == null)  throw new ExternalException("Unknow service: " + request.url);
+            if (siteImages == null)  throw new BadRequestException("Unknow service: " + request.url);
+        }
+        else if (ServiceParser.otherServices.containsKey(cuttedRequestUrl))
+        {
+            request.url = cuttedRequestUrl;
+            siteImages = ServiceParser.otherServices.get(cuttedRequestUrl);
         }
         //    sites
         else
@@ -203,19 +213,25 @@ public class Application
                 request.url = "http://" + request.url;
             }
             //    check URL
-            try  {  new URL (request.url);  }
+            URL url;
+            try  {  url = new URL (request.url);  }
             catch (MalformedURLException e)  {  throw new BadRequestException (e.getMessage());  }
-            //    remove ending slash
-            request.url = Util.cutIfEnds(request.url, "/");
-            //    remove www prefix
-            request.url = request.url.startsWith("http://www.") ? "http://" + request.url.substring("http://www.".length()) :
-                          request.url.startsWith("https://www.") ? "https://" + request.url.substring("https://www.".length()) : request.url;
+            //    check domain is a known service
+            String domain = Util.cutIfStarts(url.getHost(), "www.");
+            siteImages = ServiceParser.servicesByDomain.get(domain);
+            if (siteImages == null) {
+                //    remove ending slash
+                request.url = Util.cutIfEnds(request.url, "/");
+                //    remove www prefix
+                request.url = request.url.startsWith("http://www.") ? "http://" + request.url.substring("http://www.".length()) :
+                              request.url.startsWith("https://www.") ? "https://" + request.url.substring("https://www.".length()) : request.url;
 
-            //    get icon images from cache or load
-            try  {  siteImages = cache.get(request.url);  }
-            catch (ExecutionException e)  {
-                if (e.getCause() instanceof IOException)  throw new ExternalException (e.getCause());
-                else  throw new RuntimeException (e.getCause());
+                //    get icon images from cache or load
+                try  {  siteImages = cache.get(request.url);  }
+                catch (ExecutionException e)  {
+                    if (e.getCause() instanceof IOException)  throw new ExternalException (e.getCause());
+                    else  throw new RuntimeException (e.getCause());
+                }
             }
         }
 
@@ -254,20 +270,23 @@ public class Application
         return image;
     }
 
-    public static BufferedImage processError(Request request, String errorCode)  {
-        BufferedImage image = new BufferedImage(request.size, request.size, BufferedImage.TYPE_INT_RGB);
+    public static BufferedImage drawError(int size, String err)  {
+        return drawText(size, "ERR", err, Color.RED);
+    }
+    public static BufferedImage drawText(int size, String line1, String line2, Color color)  {
+        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
         Graphics g = image.createGraphics();
-        g.setColor(Color.RED);
-        g.setFont(new Font("Lucida Sans TypeWriter", Font.PLAIN, request.size / 2));
+        g.setColor(color);
+        g.setFont(new Font("Lucida Sans TypeWriter", Font.PLAIN, size / 2));
         FontMetrics fontMetrics = g.getFontMetrics();
-        g.drawString("ERR", request.size/2 - fontMetrics.stringWidth("ERR")/2, request.size/2);
-        g.drawString(errorCode, request.size/2 - fontMetrics.stringWidth(errorCode)/2, request.size);
+        g.drawString(line1, size/2 - fontMetrics.stringWidth(line1)/2, size/2 - 2);
+        g.drawString(line2, size/2 - fontMetrics.stringWidth(line2)/2, size - 2);
         return image;
     }
 
-    // ищется ссылка с размером, равным запрашиваемому, если нет, то ближайшая с большим размером и кратным запрашиваемому,
-    // если нет, то просто ближайшая с большим, если нет, то ближайшая с меньшим
-    // с равным размером выбирается ссылка с наибольшим приоритетом
+    // РёС‰РµС‚СЃСЏ СЃСЃС‹Р»РєР° СЃ СЂР°Р·РјРµСЂРѕРј, СЂР°РІРЅС‹Рј Р·Р°РїСЂР°С€РёРІР°РµРјРѕРјСѓ, РµСЃР»Рё РЅРµС‚, С‚Рѕ Р±Р»РёР¶Р°Р№С€Р°СЏ СЃ Р±РѕР»СЊС€РёРј СЂР°Р·РјРµСЂРѕРј Рё РєСЂР°С‚РЅС‹Рј Р·Р°РїСЂР°С€РёРІР°РµРјРѕРјСѓ,
+    // РµСЃР»Рё РЅРµС‚, С‚Рѕ РїСЂРѕСЃС‚Рѕ Р±Р»РёР¶Р°Р№С€Р°СЏ СЃ Р±РѕР»СЊС€РёРј, РµСЃР»Рё РЅРµС‚, С‚Рѕ Р±Р»РёР¶Р°Р№С€Р°СЏ СЃ РјРµРЅСЊС€РёРј
+    // СЃ СЂР°РІРЅС‹Рј СЂР°Р·РјРµСЂРѕРј РІС‹Р±РёСЂР°РµС‚СЃСЏ СЃСЃС‹Р»РєР° СЃ РЅР°РёР±РѕР»СЊС€РёРј РїСЂРёРѕСЂРёС‚РµС‚РѕРј
     public static boolean isMoreAppropriate(int requestSize, int foundSize, int foundPriority, int size, int priority)  {
         return
             size==foundSize ? priority<foundPriority : foundSize==requestSize ? false :
@@ -278,7 +297,7 @@ public class Application
 
     public static SiteImageItem getAppropriateImage(SiteImages images, int requestSize) throws NotFoundException
     {
-        synchronized (images)  {  //todo плохо, что при загрузке доп. изображений блокируется доступ на чтение к уже загруженным
+        synchronized (images)  {  //todo РїР»РѕС…Рѕ, С‡С‚Рѕ РїСЂРё Р·Р°РіСЂСѓР·РєРµ РґРѕРї. РёР·РѕР±СЂР°Р¶РµРЅРёР№ Р±Р»РѕРєРёСЂСѓРµС‚СЃСЏ РґРѕСЃС‚СѓРї РЅР° С‡С‚РµРЅРёРµ Рє СѓР¶Рµ Р·Р°РіСЂСѓР¶РµРЅРЅС‹Рј
             while (true)  {
                 if (images.isEmpty())  throw new NotFoundException();
 
@@ -318,7 +337,7 @@ public class Application
         Connection.Response response = con.execute();
         String contentType = getPureContentType(response);
         Format imgFormat = CONTENT_TYPE_FORMATS.get(contentType);
-        if (imgFormat != null || contentType.startsWith("image/"))  {
+        if (imgFormat != null || contentType != null && contentType.startsWith("image/"))  {
             loadImage(response, siteImages, new SiteImageItem(SiteImageItem.UNKNOWN, 1, url), imgFormat);
             return siteImages;
         }
@@ -378,10 +397,10 @@ public class Application
                             if (lastOgImageHeight != 0 && lastOgImage != null)  {
                                 items.remove(lastOgImage);
                                 if (lastOgImageHeight == lastOgImageWidth)  items.add(new SiteImageItem(lastOgImageWidth, lastOgImage.priority, lastOgImage.url));
-                                else  System.out.println("Different og:image sizes " + lastOgImageWidth + "x" + lastOgImageHeight + " for " + lastOgImage.url);
+                                else  log.info("Different og:image sizes " + lastOgImageWidth + "x" + lastOgImageHeight + " for " + lastOgImage.url);
                             }
                         }
-                        catch (NumberFormatException e)  {  System.out.println("Wrong og:image:width = " + content + " for " + lastOgImage.url);  }
+                        catch (NumberFormatException e)  {  log.info("Wrong og:image:width = " + content + " for " + lastOgImage.url);  }
                     }
                     else if (property.equals("og:image:height") && lastOgImageHeight == 0)
                     {
@@ -391,10 +410,10 @@ public class Application
                             if (lastOgImageHeight != 0 && lastOgImage != null)  {
                                 items.remove(lastOgImage);
                                 if (lastOgImageHeight == lastOgImageWidth)  items.add(new SiteImageItem(lastOgImageWidth, lastOgImage.priority, lastOgImage.url));
-                                else  System.out.println("Different og:image sizes: " + lastOgImageWidth + "x" + lastOgImageHeight + " for " + lastOgImage.url);
+                                else  log.info("Different og:image sizes: " + lastOgImageWidth + "x" + lastOgImageHeight + " for " + lastOgImage.url);
                             }
                         }
-                        catch (NumberFormatException e)  {  System.out.println("Wrong og:image:height = " + content + " for " + lastOgImage.url);  }
+                        catch (NumberFormatException e)  {  log.info("Wrong og:image:height = " + content + " for " + lastOgImage.url);  }
                     }
                 }
             }
@@ -417,26 +436,28 @@ public class Application
     }
 
     // One SiteImageItem can produce multiple SiteImageItem-s after loading (ICO case)
-    public static void loadImage(Connection con, SiteImages items, SiteImageItem item)
+    public static void loadImage(Connection con, SiteImages items, SiteImageItem item)  {  loadImage(con, items, item, false);  }
+    public static void loadImage(Connection con, SiteImages items, SiteImageItem item, boolean allowNonQuadSvg)
     {
         try
         {
             Connection.Response response = con.url(item.url).execute();
             String contentType = getPureContentType(response);
             Format imgFormat = CONTENT_TYPE_FORMATS.get(contentType);
-            loadImage(response, items, item, imgFormat);
+            loadImage(response, items, item, imgFormat, allowNonQuadSvg);
         }
         catch (Exception e)  {
-            System.out.println("Can't load "+item.url+": "+e.toString());
+            log.error("Can't load "+item.url+": "+e.toString());
         }
     }
 
-    private static void loadImage(Connection.Response reponse, SiteImages items, SiteImageItem item, Format format)
+    private static void loadImage(Connection.Response response, SiteImages items, SiteImageItem item, Format format)  {  loadImage(response, items, item, format, false);  }
+    private static void loadImage(Connection.Response response, SiteImages items, SiteImageItem item, Format format, boolean allowNonQuadSvg)
     {
         try
         {
             //    read content
-            byte[] content = reponse.bodyAsBytes();
+            byte[] content = response.bodyAsBytes();
 
             //    try parse image with jdk first
             if (format != Format.SVG && format != Format.ICO)  {
@@ -449,7 +470,7 @@ public class Application
 
             //    try to parse SVG
             if (format == Format.SVG)  {
-                loadSvg(content, items, item);
+                loadSvg(content, items, item, allowNonQuadSvg);
                 return;
             }
 
@@ -466,15 +487,18 @@ public class Application
             throw new ExternalException("Unsupported image: "+item.url);
         }
         catch (Exception e)  {
-            System.out.println("Can't load "+item.url+": "+e.toString());
+            log.error("Can't load "+item.url+": "+e.toString());
         }
     }
 
-    public static void loadSvg(byte[] content, SiteImages items, SiteImageItem item) throws ExternalException, IOException
+    public static void loadSvg(byte[] content, SiteImages items, SiteImageItem item) throws ExternalException, IOException  {
+        loadSvg(content, items, item, false);
+    }
+    public static void loadSvg(byte[] content, SiteImages items, SiteImageItem item, boolean allowNonQuad) throws ExternalException, IOException
     {
         SVGUniverse universe = new SVGUniverse();
         SVGDiagram diagram = universe.getDiagram(universe.loadSVG(new ByteArrayInputStream(content), item.url));
-        if (diagram.getWidth()!=diagram.getHeight())  throw new ExternalException(
+        if (!allowNonQuad && diagram.getWidth()!=diagram.getHeight())  throw new ExternalException(
             "Image has different sizes: "+diagram.getWidth()+"x"+diagram.getHeight());
         items.add(new SiteImageItem(SiteImageItem.ANY_SIZE, item.priority, item.url, diagram));
     }
@@ -503,12 +527,16 @@ public class Application
     }
 
     public static void checkAndAddImage(SiteImages items, BufferedImage image, SiteImageItem item) throws ExternalException  {
+        //TODO special treatment for Yahoo
+        if (image.getWidth()==250 && image.getHeight()==252)  {
+            image = getSizedImage(image, 252, 252);
+        }
         if (image.getWidth()!=image.getHeight())  {  //ignore
-            System.out.println("Image has different sizes ("+image.getWidth()+"x"+image.getHeight()+"): "+item.url);
+            log.info("Image has different sizes ("+image.getWidth()+"x"+image.getHeight()+"): "+item.url);
             return;
         }
         int size = image.getWidth();
-        if (item.size != SiteImageItem.UNKNOWN && item.size != SiteImageItem.ANY_SIZE && size != item.size)  System.out.println("Loaded image size differs from declared (" + size + " <> " + item.size + ") for " + item.url);
+        if (item.size != SiteImageItem.UNKNOWN && item.size != SiteImageItem.ANY_SIZE && size != item.size)  log.warn("Loaded image size differs from declared (" + size + " <> " + item.size + ") for " + item.url);
         items.add(new SiteImageItem(size, item.priority, item.url, image));
     }
 
@@ -528,7 +556,10 @@ public class Application
         Graphics2D g2 = image.createGraphics();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         AffineTransform at = new AffineTransform();
-        at.setToScale(size/diagram.getWidth(), size/diagram.getWidth());
+        float maxSize = Math.max(diagram.getWidth(), diagram.getHeight());
+        at.setToScale(size/maxSize, size/maxSize);
+        if (diagram.getWidth() != diagram.getHeight())
+            at.translate((maxSize - diagram.getWidth())/2.0, (maxSize - diagram.getHeight())/2.0);
         g2.transform(at);
         diagram.render(g2);
         return image;
@@ -554,6 +585,22 @@ public class Application
         }
         scaleTransform.scale(scaleX, scaleY);
         AffineTransformOp bilinearScaleOp = new AffineTransformOp(scaleTransform, AffineTransformOp.TYPE_BILINEAR);
+
+        return bilinearScaleOp.filter(
+                image,
+                new BufferedImage(destWidth, destHeight, image.getType()));
+    }
+
+    public static BufferedImage getSizedImage(BufferedImage image, int destWidth, int destHeight)
+    {
+        int imageWidth  = image.getWidth();
+        int imageHeight = image.getHeight();
+
+        if (imageWidth == destWidth && imageHeight == destHeight)  return image;
+
+        AffineTransform transform = new AffineTransform();
+        transform.translate((destWidth - imageWidth)/2.0, (destHeight - imageHeight)/2.0);
+        AffineTransformOp bilinearScaleOp = new AffineTransformOp(transform, AffineTransformOp.TYPE_BILINEAR);
 
         return bilinearScaleOp.filter(
                 image,

@@ -73,6 +73,14 @@ public class RunApplication
         }
     }
 
+    @Test
+    public void nonQuadSvg() throws Exception
+    {
+        Application.SiteImages images = ServiceParser.loadServiceImage("", "", "https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg");
+        try (FileOutputStream output = new FileOutputStream("result.png"))
+        {  ImageIO.write(Application.drawSvg(images.get(0).diagram, 64), "PNG", output);  }
+    }
+
     private static void processAndWrite(String url) throws Exception  {  processAndWrite(url, 32, "png", false, "result.png");  }
 
     private static void processAndWrite(String url, int size, String format, boolean button, String outputFileName) throws Exception

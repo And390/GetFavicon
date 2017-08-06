@@ -1,8 +1,12 @@
 import getfavicon.Application;
+import java.awt.Color;
 import org.junit.Test;
 import utils.RandomUtil;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.FileOutputStream;
+import java.io.IOException;
 
 import static org.junit.Assert.assertEquals;
 
@@ -31,26 +35,26 @@ public class TestImages
 
     @Test
     public void isMoreAppropriate()  {
-        // если с нужным размером найдено, то прокатит только с большим приоритетом и таким же размером
+        // РµСЃР»Рё СЃ РЅСѓР¶РЅС‹Рј СЂР°Р·РјРµСЂРѕРј РЅР°Р№РґРµРЅРѕ, С‚Рѕ РїСЂРѕРєР°С‚РёС‚ С‚РѕР»СЊРєРѕ СЃ Р±РѕР»СЊС€РёРј РїСЂРёРѕСЂРёС‚РµС‚РѕРј Рё С‚Р°РєРёРј Р¶Рµ СЂР°Р·РјРµСЂРѕРј
         assertEquals("", false, Application.isMoreAppropriate(64, 64, 1, 64, 2));
         assertEquals("", false, Application.isMoreAppropriate(64, 64, 2, 64, 2));
         assertEquals("", true , Application.isMoreAppropriate(64, 64, 3, 64, 2));
         assertEquals("", false, Application.isMoreAppropriate(64, 64, 3, 128, 2));
         assertEquals("", false, Application.isMoreAppropriate(64, 64, 3, 32, 2));
-        // если найдено с меньшим, то прокатит с большим размером или приоритетом
+        // РµСЃР»Рё РЅР°Р№РґРµРЅРѕ СЃ РјРµРЅСЊС€РёРј, С‚Рѕ РїСЂРѕРєР°С‚РёС‚ СЃ Р±РѕР»СЊС€РёРј СЂР°Р·РјРµСЂРѕРј РёР»Рё РїСЂРёРѕСЂРёС‚РµС‚РѕРј
         assertEquals("", false, Application.isMoreAppropriate(64, 32, 2, 16, 2));
         assertEquals("", false, Application.isMoreAppropriate(64, 32, 2, 32, 2));
         assertEquals("", true , Application.isMoreAppropriate(64, 32, 3, 32, 2));
         assertEquals("", true , Application.isMoreAppropriate(64, 32, 1, 48, 2));
         assertEquals("", true , Application.isMoreAppropriate(64, 32, 1, 96, 2));
-        // если найдено с большим, то прокатит с большим приоритетом или с меньшим размером, но больше запрашиваемого
+        // РµСЃР»Рё РЅР°Р№РґРµРЅРѕ СЃ Р±РѕР»СЊС€РёРј, С‚Рѕ РїСЂРѕРєР°С‚РёС‚ СЃ Р±РѕР»СЊС€РёРј РїСЂРёРѕСЂРёС‚РµС‚РѕРј РёР»Рё СЃ РјРµРЅСЊС€РёРј СЂР°Р·РјРµСЂРѕРј, РЅРѕ Р±РѕР»СЊС€Рµ Р·Р°РїСЂР°С€РёРІР°РµРјРѕРіРѕ
         assertEquals("", false, Application.isMoreAppropriate(64, 96, 1, 96, 2));
         assertEquals("", true , Application.isMoreAppropriate(64, 96, 3, 96, 2));
         assertEquals("", false, Application.isMoreAppropriate(64, 96, 3, 97, 2));
         assertEquals("", true , Application.isMoreAppropriate(64, 96, 1, 95, 2));
         assertEquals("", true , Application.isMoreAppropriate(64, 96, 1, 64, 2));
         assertEquals("", false, Application.isMoreAppropriate(64, 96, 1, 63, 2));
-        // для больших размеров важна кратность
+        // РґР»СЏ Р±РѕР»СЊС€РёС… СЂР°Р·РјРµСЂРѕРІ РІР°Р¶РЅР° РєСЂР°С‚РЅРѕСЃС‚СЊ
         assertEquals("", true , Application.isMoreAppropriate(64, 96, 1, 128, 2));
         assertEquals("", false, Application.isMoreAppropriate(64, 96, 1, 160, 2));
         assertEquals("", true , Application.isMoreAppropriate(64, 96, 1, 192, 2));
@@ -66,5 +70,13 @@ public class TestImages
         BufferedImage result = Application.getScaledImage(source, width, height);
         assertEquals("", width, result.getWidth());
         assertEquals("", height, result.getHeight());
+    }
+
+    @Test
+    public void drawError() throws IOException {
+        BufferedImage image = Application.drawText(32, "GET", "ICO", new Color(0, 155, 0));
+        try (FileOutputStream out = new FileOutputStream("result.png")) {
+            ImageIO.write(image, Application.Format.PNG.toString().toLowerCase(), out);
+        }
     }
 }

@@ -23,8 +23,9 @@ public class TestImageProcess
     }
 
     private static void convert(String fileName) throws IOException {
-        BufferedImage img = ImageIO.read(new File(fileName));
-        img = Application.getScaledImage(img, img.getWidth(), img.getHeight());
+        BufferedImage source = ImageIO.read(new File(fileName));
+        BufferedImage img = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        img.getGraphics().drawImage(source, 0, 0, null);
         Application.replaceWhiteBackgroundWithAlpha(img);
         ImageIO.write(img, "png", new File(Util.addFileName(fileName, "_result", true)));
     }

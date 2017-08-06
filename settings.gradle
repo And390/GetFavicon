@@ -1,0 +1,4 @@
+rootProject.name = 'GetFavicon'
+
+include ':Utils'
+project(':Utils').projectDir = new File('../Utils')
