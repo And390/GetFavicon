@@ -5,6 +5,7 @@ import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import util.Config;
 import utils.ExternalException;
 import utils.Util;
 
@@ -32,12 +33,14 @@ public class ServiceParser
 
     public static void loadServiceImages() throws IOException, ExternalException, SVGException
     {
-        loadGoogleServices();
-        loadYahooServices();
-        loadYandexServices();
-        loadMailServices();
-        loadOtherServices();
-        makeServicesByDomain();
+        if (!Config.getBool("test", false)) {
+            loadGoogleServices();
+            loadYahooServices();
+            loadYandexServices();
+            loadMailServices();
+            loadOtherServices();
+            makeServicesByDomain();
+        }
     }
 
 

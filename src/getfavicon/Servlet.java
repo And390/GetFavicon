@@ -58,6 +58,7 @@ public class Servlet extends HttpServlet
             ServletContext context = getServletContext();
             mainPage = ByteArray.read(context.getResourceAsStream("/index.html"));
             ServiceParser.loadServiceImages();
+            Application.init();
         }
         catch (IOException|ExternalException|SVGException e)  {  throw new ServletException(e);  }
     }
@@ -86,9 +87,10 @@ public class Servlet extends HttpServlet
 
         //    favicon
         if (url.equals("favicon.ico"))  {
-            BufferedImage image = Application.drawText(32, "GET", "ICO", new java.awt.Color(0, 155, 0));
+            BufferedImage image = Application.drawText(32, "GET", "ICO", new java.awt.Color(0, 200, 0));
             response.setContentType(imageContentTypes.get(Format.PNG));
             ImageIO.write(image, Format.PNG.toString(), response.getOutputStream());
+            response.setHeader("Cache-Control", DEFAULT_CACHE_CONTROL);
             return;
         }
 

@@ -12,6 +12,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import utils.ByteArray;
 import utils.ExternalException;
 import utils.StringList;
 import utils.Util;
@@ -21,6 +22,7 @@ import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.*;
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -180,6 +182,30 @@ public class Application
         });
 
 
+    private static HashMap<String, PresetImage> sewnImages = new HashMap<>();
+    private static class PresetImage {
+        byte[] data;
+        Format format;
+    }
+    public static void init() throws IOException
+    {
+        File[] files = new File("site_img").listFiles();
+        if (files == null)  {  log.warn("'site_img' directory is not found");  return;  }
+        for (File file : files)  {
+            String name = file.getName();
+            String ext = Util.fileExt(name, true);
+            if (ext == null)  continue;
+            Format format = REQUEST_FORMAT_MAP.get(ext.toUpperCase());
+            if (format == null)  {  log.warn("Unexpected file in 'site_img' directory: " + name);  continue;  }
+            String domain = name.substring(0, name.length() - ext.length() - 1);
+            byte[] imgData = ByteArray.read(file);
+            PresetImage img = new PresetImage();
+            img.data = imgData;
+            img.format = format;
+            sewnImages.put(domain, img);
+        }
+    }
+
     public static BufferedImage process(Request request, String requestSize, String requestFormat, boolean button)
             throws ExternalException, IOException, SVGException
     {
@@ -286,7 +312,7 @@ public class Application
         BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
         Graphics g = image.createGraphics();
         g.setColor(color);
-        g.setFont(new Font("Lucida Sans TypeWriter", Font.PLAIN, size / 2));
+        g.setFont(new Font("Lucida Sans TypeWriter", Font.BOLD, size / 2));
         FontMetrics fontMetrics = g.getFontMetrics();
         g.drawString(line1, size/2 - fontMetrics.stringWidth(line1)/2, size/2 - 2);
         g.drawString(line2, size/2 - fontMetrics.stringWidth(line2)/2, size - 2);
@@ -343,15 +369,34 @@ public class Application
     {
         //    execute
         Connection con = getConnection(url);
-        Connection.Response response = con.execute();
+        Connection.Response response = null;
+        try  {  response = con.execute();  }  catch (IOException e)  {
+            if (loadSewnImage(url, siteImages).isEmpty())  throw new IOException("Can't get http: "+url, e);
+            else  {  log.error("Can't get http: "+url, e);  return siteImages;  }
+        }
         String contentType = getPureContentType(response);
         Format imgFormat = CONTENT_TYPE_FORMATS.get(contentType);
         if (imgFormat != null || contentType != null && contentType.startsWith("image/"))  {
             loadImage(response, siteImages, new SiteImageItem(SiteImageItem.UNKNOWN, 1, url), imgFormat);
-            return siteImages;
         }
-        Document document = response.parse();
-        return loadImages(con, document, siteImages);
+        else  {
+            Document document = response.parse();
+            loadImages(con, document, siteImages);
+        }
+
+        //    append preset images
+        return loadSewnImage(url, siteImages);
+    }
+
+    private static SiteImages loadSewnImage(String url, SiteImages siteImages) throws MalformedURLException
+    {
+        String domain = new URL(url).getHost();
+        PresetImage sewn = sewnImages.get(domain);
+        if (sewn != null) {
+            SiteImageItem item = new Application.SiteImageItem(Application.SiteImageItem.UNKNOWN, 1, url);
+            loadImage(sewn.data, siteImages, item, sewn.format, false);
+        }
+        return siteImages;
     }
 
     public static SiteImages loadImages(Connection con, Document document, SiteImages siteImages) throws IOException
@@ -461,12 +506,13 @@ public class Application
     }
 
     private static void loadImage(Connection.Response response, SiteImages items, SiteImageItem item, Format format)  {  loadImage(response, items, item, format, false);  }
-    private static void loadImage(Connection.Response response, SiteImages items, SiteImageItem item, Format format, boolean allowNonQuadSvg)
+    private static void loadImage(Connection.Response response, SiteImages items, SiteImageItem item, Format format, boolean allowNonQuadSvg)  {  loadImage(response.bodyAsBytes(), items, item, format, allowNonQuadSvg);  }
+    private static void loadImage(byte[] bytes, SiteImages items, SiteImageItem item, Format format, boolean allowNonQuadSvg)
     {
         try
         {
             //    read content
-            byte[] content = response.bodyAsBytes();
+            byte[] content = bytes;
 
             //    try parse image with jdk first
             if (format != Format.SVG && format != Format.ICO)  {

@@ -56,6 +56,9 @@ sourceSets {
 applicationDistribution.from("web/") {
     into "/$rootProject.name/web/"
 }
+applicationDistribution.from("site_img/") {
+    into "/$rootProject.name/site_img/"
+}
 applicationDistribution.from("log4j2.xml") {
     into "/$rootProject.name"
 }
