@@ -20,6 +20,7 @@ import java.awt.image.BufferedImage;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,7 +61,7 @@ public class Servlet extends HttpServlet
             ServiceParser.loadServiceImages();
             Application.init();
         }
-        catch (IOException|ExternalException|SVGException e)  {  throw new ServletException(e);  }
+        catch (IOException|ExternalException|SVGException|GeneralSecurityException e)  {  throw new ServletException(e);  }
     }
 
     private static void close(Closeable closeable)  {

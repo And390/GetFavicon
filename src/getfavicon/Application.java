@@ -18,6 +18,7 @@ import utils.StringList;
 import utils.Util;
 
 import javax.imageio.ImageIO;
+import javax.net.ssl.*;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.*;
@@ -26,10 +27,14 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.security.GeneralSecurityException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * User: And390
@@ -187,7 +192,7 @@ public class Application
         byte[] data;
         Format format;
     }
-    public static void init() throws IOException
+    public static void init() throws IOException, GeneralSecurityException
     {
         File[] files = new File("site_img").listFiles();
         if (files == null)  {  log.warn("'site_img' directory is not found");  return;  }
@@ -204,6 +209,8 @@ public class Application
             img.format = format;
             sewnImages.put(domain, img);
         }
+
+        disableSSLCertCheck();
     }
 
     public static BufferedImage process(Request request, String requestSize, String requestFormat, boolean button)
@@ -402,9 +409,14 @@ public class Application
     public static SiteImages loadImages(Connection con, Document document, SiteImages siteImages) throws IOException
     {
         //    parse HTML
-        List<SiteImageItem> items = new ArrayList<> ();
-        String base = document.baseUri();
-        SiteImageItem lastOgImage = null;
+        LinkedHashMap<String, SiteImageItem> items = new LinkedHashMap<> ();
+        Consumer<SiteImageItem> addItem = (item) -> {
+            items.compute(item.url, (k,v) -> v == null || item.priority < v.priority || item.priority == v.priority && v.size == SiteImageItem.UNKNOWN
+                    ? item : v);
+        };
+        URL base = new URL(document.baseUri());
+        boolean hasP1 = false;
+        String lastOgImageUrl = null;
         int lastOgImageWidth = 0;
         int lastOgImageHeight = 0;
         for (Element elem : document.head().children())  {
@@ -415,7 +427,7 @@ public class Application
                 switch (elem.attr("rel").toLowerCase())  {
                     case "icon":
                     case "shortcut icon":
-                        priority = 1;  iconUrl = elem.attr("href");  break;
+                        priority = 1;  iconUrl = elem.attr("href");  hasP1 = true;  break;
                     case "apple-touch-icon":
                     case "apple-touch-icon-precomposed":
                         priority = 2;  iconUrl = elem.attr("href");
@@ -429,7 +441,7 @@ public class Application
                         break;
                 }
                 if (priority!=0 && Util.isNotEmpty(iconUrl))  {
-                    items.add(new SiteImageItem(size, priority, iconUrl));
+                    addItem.accept(new SiteImageItem(size, priority, iconUrl));
                 }
             }
             else if (elem.tagName().equals("meta"))  {
@@ -438,51 +450,68 @@ public class Application
                 if (!property.isEmpty() && !content.isEmpty())  {
                     if (property.equals("og:image"))
                     {
-                        lastOgImage = new SiteImageItem(-1, 4, elem.attr("content"));
+                        lastOgImageUrl = elem.attr("content");
                         lastOgImageWidth = 0;
                         lastOgImageHeight = 0;
-                        items.add(lastOgImage);
+                        addItem.accept(new SiteImageItem(-1, 4, lastOgImageUrl));
                     }
                     else if (property.equals("og:image:width") && lastOgImageWidth == 0)
                     {
-                        try  {
-                            lastOgImageWidth = Integer.parseInt(content);
-                            if (lastOgImageWidth <= 0)  throw new NumberFormatException();
-                            if (lastOgImageHeight != 0 && lastOgImage != null)  {
-                                items.remove(lastOgImage);
-                                if (lastOgImageHeight == lastOgImageWidth)  items.add(new SiteImageItem(lastOgImageWidth, lastOgImage.priority, lastOgImage.url));
-                                else  log.info("Different og:image sizes " + lastOgImageWidth + "x" + lastOgImageHeight + " for " + lastOgImage.url);
+                        if (lastOgImageUrl != null)
+                            try  {
+                                lastOgImageWidth = Integer.parseInt(content);
+                                if (lastOgImageWidth <= 0)  throw new NumberFormatException();
+                                if (lastOgImageHeight != 0)  {
+                                    SiteImageItem lastOgImage = items.remove(lastOgImageUrl);
+                                    if (lastOgImageHeight == lastOgImageWidth)  addItem.accept(new SiteImageItem(lastOgImageWidth, lastOgImage.priority, lastOgImageUrl));
+                                    else  log.info("Different og:image sizes " + lastOgImageWidth + "x" + lastOgImageHeight + " for " + lastOgImageUrl);
+                                }
                             }
-                        }
-                        catch (NumberFormatException e)  {  log.info("Wrong og:image:width = " + content + " for " + lastOgImage.url);  }
+                            catch (NumberFormatException e)  {  log.info("Wrong og:image:width = " + content + " for " + lastOgImageUrl);  }
+                        else
+                            log.info("Wrong og:image:width before og:image");
                     }
                     else if (property.equals("og:image:height") && lastOgImageHeight == 0)
                     {
-                        try  {
-                            lastOgImageHeight = Integer.parseInt(content);
-                            if (lastOgImageHeight <= 0)  throw new NumberFormatException();
-                            if (lastOgImageHeight != 0 && lastOgImage != null)  {
-                                items.remove(lastOgImage);
-                                if (lastOgImageHeight == lastOgImageWidth)  items.add(new SiteImageItem(lastOgImageWidth, lastOgImage.priority, lastOgImage.url));
-                                else  log.info("Different og:image sizes: " + lastOgImageWidth + "x" + lastOgImageHeight + " for " + lastOgImage.url);
+                        if (lastOgImageUrl != null)
+                            try  {
+                                lastOgImageHeight = Integer.parseInt(content);
+                                if (lastOgImageHeight <= 0)  throw new NumberFormatException();
+                                if (lastOgImageWidth != 0)  {
+                                    SiteImageItem lastOgImage = items.remove(lastOgImageUrl);
+                                    if (lastOgImageHeight == lastOgImageWidth)  addItem.accept(new SiteImageItem(lastOgImageHeight, lastOgImage.priority, lastOgImageUrl));
+                                    else  log.info("Different og:image sizes: " + lastOgImageWidth + "x" + lastOgImageHeight + " for " + lastOgImageUrl);
+                                }
                             }
-                        }
-                        catch (NumberFormatException e)  {  log.info("Wrong og:image:height = " + content + " for " + lastOgImage.url);  }
+                            catch (NumberFormatException e)  {  log.info("Wrong og:image:height = " + content + " for " + lastOgImageUrl);  }
+                        else
+                            log.info("Wrong og:image:height before og:image");
                     }
                 }
             }
             else if (elem.tagName().equals("base"))  {
-                if (!elem.attr("href").isEmpty())  base = elem.attr("href");
+                if (!elem.attr("href").isEmpty())
+                    try  {  base = new URL(base, elem.attr("href"));  }
+                    catch (MalformedURLException e)  {}  //ignore malformed base URLs
             }
         }
 
+        //    append favicon.ico if no
+        if (!hasP1)
+            addItem.accept(new SiteImageItem(SiteImageItem.UNKNOWN, 1, "/favicon.ico"));
+
         //    append url base
-        try  {  URL baseURL = new URL(base);
-                for (SiteImageItem item : items)  item.url = new URL(baseURL, item.url).toString();  }
-        catch (MalformedURLException e)  {}  //ignore malformed base URLs
+        for (String key : new ArrayList<>(items.keySet()))  {
+            try  {
+                SiteImageItem item = items.remove(key);
+                item.url = new URL(base, item.url).toString();
+                addItem.accept(item);
+            }
+            catch (MalformedURLException e)  {  log.error(e.toString());  }  //ignore malformed URLs
+        }
 
         //    order images by size (see SiteImages.add), load images without sizes
-        for (SiteImageItem item : items)
+        for (SiteImageItem item : items.values())
             if (item.size!=SiteImageItem.UNKNOWN)  siteImages.add(item);
             else  loadImage(con, siteImages, item);
 
@@ -515,7 +544,7 @@ public class Application
             byte[] content = bytes;
 
             //    try parse image with jdk first
-            if (format != Format.SVG && format != Format.ICO)  {
+            if (format != Format.SVG)  {   //  && format != Format.ICO  //there is a PNG disguised as ICO on some sites
                 BufferedImage image = ImageIO.read(new ByteArrayInputStream(content));
                 if (image!=null)  {
                     checkAndAddImage(items, image, item);
@@ -891,4 +920,36 @@ public class Application
     }
 
     private static int getAlpha(int rgba)  {  return (rgba >> 24) & 0xFF;  }
+
+
+    //                --------    util    --------
+
+    private static void disableSSLCertCheck() throws NoSuchAlgorithmException, KeyManagementException {
+        // Create a trust manager that does not validate certificate chains
+        TrustManager[] trustAllCerts = new TrustManager[] {new X509TrustManager() {
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                    return null;
+                }
+                public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                }
+                public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                }
+            }
+        };
+
+        // Install the all-trusting trust manager
+        SSLContext sc = SSLContext.getInstance("SSL");
+        sc.init(null, trustAllCerts, new java.security.SecureRandom());
+        HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+
+        // Create all-trusting host name verifier
+        HostnameVerifier allHostsValid = new HostnameVerifier() {
+            public boolean verify(String hostname, SSLSession session) {
+                return true;
+            }
+        };
+
+        // Install the all-trusting host verifier
+        HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+    }
 }
