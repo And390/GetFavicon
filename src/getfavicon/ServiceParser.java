@@ -184,6 +184,22 @@ public class ServiceParser
                 }
 
                 if (!images.isEmpty())  serviceImages.put(serviceName, images);
+
+                //    additional services that can be not show (because of location)
+                if (serviceName.equals("maps") && !serviceImages.containsKey("metro"))  {
+                    images = loadServiceImage(con, "Метро", "https://metro.yandex.ru/", "https://metro.yandex.ru/favicon.svg");
+                    //images = loadServiceImages("Метро", "https://metro.yandex.ru/", "metro");
+                    if (!images.isEmpty())  serviceImages.put("metro", images);
+                }
+                else if (serviceName.equals("suvenirka") && !serviceImages.containsKey("taxi"))  {
+                    byte[] svg = svgData.get("b-ico-taxi");
+                    if (svg != null)  {
+                        images = new Application.ServiceImages("Такси", "https://taxi.yandex.ru/");
+                        item = new Application.SiteImageItem(Application.SiteImageItem.UNKNOWN, 1, href);
+                        Application.loadSvg(svg, images, item);
+                        if (!images.isEmpty())  serviceImages.put("taxi", images);
+                    }
+                }
             }
         }
 
