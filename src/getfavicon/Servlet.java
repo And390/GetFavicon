@@ -77,7 +77,7 @@ public class Servlet extends HttpServlet
         if (url.startsWith("/"))  url = url.substring(1);
         //    log
         String q = request.getQueryString();
-        log.info("request: " + url + (q!=null ? "?"+q : ""));
+        log.info("request "+request.getRemoteAddr()+": " + url + (q!=null ? "?"+q : ""));
 
         //    default page
         if (url.isEmpty() || url.equals("index.html") || url.equals("index.htm"))  {

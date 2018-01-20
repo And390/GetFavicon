@@ -583,7 +583,7 @@ public class Application
         SVGUniverse universe = new SVGUniverse();
         SVGDiagram diagram = universe.getDiagram(universe.loadSVG(new ByteArrayInputStream(content), item.url));
         if (!allowNonQuad && diagram.getWidth()!=diagram.getHeight())  throw new ExternalException(
-            "Image has different sizes: "+diagram.getWidth()+"x"+diagram.getHeight());
+            "Image has different sizes: "+diagram.getWidth()+"x"+diagram.getHeight()+": "+item.url);
         items.add(new SiteImageItem(SiteImageItem.ANY_SIZE, item.priority, item.url, diagram));
     }
 

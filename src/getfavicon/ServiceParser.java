@@ -5,6 +5,8 @@ import org.jsoup.Connection;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import util.Config;
 import utils.ExternalException;
 import utils.Util;
@@ -26,6 +28,8 @@ import java.util.regex.Pattern;
 @SuppressWarnings("unused")
 public class ServiceParser
 {
+    private static Logger log = LoggerFactory.getLogger(Servlet.class);
+
     public static final Map<String, Map<String, Application.ServiceImages>> services = new LinkedHashMap<>();
     public static final Map<String, String> providerNames = new LinkedHashMap<>();
     public static final Map<String, Application.ServiceImages> otherServices = new LinkedHashMap<>();
@@ -107,28 +111,58 @@ public class ServiceParser
         Connection con = Application.getConnection(allURL.toString());
         Document doc = con.get();
 
-        //  css
+        //  grab icons from css
         Map<String, byte[]> svgData = new HashMap<>();
         Map<String, byte[]> pngData = new HashMap<>();
-        String css = con.url("https://yastatic.net/www/_/S/C/_w0OBcze0QDWiaVG7AmNAH1Ms.css").execute().body();
-        Pattern cssRulePattern = Pattern.compile("([^\\{\\}]+)\\{([^\\}]*)\\}");
-        Matcher cssRules = cssRulePattern.matcher(css);
-        while (cssRules.find())  {
-            String name = cssRules.group(1).trim();
-            if (!name.matches("\\.[^\\s]+"))  continue;
-            name = name.substring(1);
-            String body = cssRules.group(2).trim();
-            String url = Util.cutIfSurroundedOrNull(body, "background-image:url(\"", "\")");
-            if (url == null)  url = Util.cutIfSurroundedOrNull(body, "background-image:url(\'", "\')");
-            if (url == null)  url = Util.cutIfSurroundedOrNull(body, "background-image:url(", ")");
-            String svg = Util.cutIfStartsOrNull(url, "data:image/svg+xml;charset=utf8,");
-            if (svg != null)  svgData.put(name, URLDecoder.decode(svg, "utf8").getBytes("UTF8"));
-            else  {
-                String png = Util.cutIfStartsOrNull(url, "data:image/png;base64,");
-                if (png != null)  pngData.put(name, Base64.getDecoder().decode(png));
-                else  throw new ExternalException("Unsupported url: " + url);
+        do {
+            String cssLink = null;
+            find_css_link:  for (Element container : new Element[]{ doc.head(), doc.body() }) {
+                if (container == null) break;
+                for (Element script : container.getElementsByTag("script")) {
+                    String text = script.html();
+                    int i = text.indexOf("getcss(");
+                    if (i == -1) continue;
+                    i += "getcss(".length();
+                    while (i < text.length() && Character.isSpaceChar(text.charAt(i))) i++;
+                    if (i == text.length()) continue;
+                    char q = text.charAt(i);
+                    if (q != '\'' && q != '\"') continue;
+                    i++;
+                    int i2 = text.indexOf(q, i);
+                    if (i2 == -1) continue;
+                    cssLink = text.substring(i, i2);
+                    cssLink = new URL(allURL, cssLink).toString();
+                    break find_css_link;
+                }
+            }
+            if (cssLink == null)  {
+                log.error("", new Exception("Can't find CSS link for yandex services"));
+                cssLink = "https://yastatic.net/www/_/6/g/WtYO0j7on678nFbB-Xm8DY7Wg.css";
+            }
+
+            String css = con.url(cssLink).execute().body();
+            Pattern cssRulePattern = Pattern.compile("([^\\{\\}]+)\\{([^\\}]*)\\}");
+            Matcher cssRules = cssRulePattern.matcher(css);
+            while (cssRules.find()) {
+                String names = cssRules.group(1).trim();
+                for (String name : Util.slice(names, ","))  {
+                    if (!name.matches("\\.[^\\s]+")) continue;
+                    name = name.substring(1);
+                    String body = cssRules.group(2).trim();
+                    String url = Util.cutIfSurroundedOrNull(body, "background-image:url(\"", "\")");
+                    if (url == null) url = Util.cutIfSurroundedOrNull(body, "background-image:url(\'", "\')");
+                    if (url == null) url = Util.cutIfSurroundedOrNull(body, "background-image:url(", ")");
+                    String svg = Util.cutIfStartsOrNull(url, "data:image/svg+xml;charset=utf8,");
+                    if (svg != null) svgData.put(name, URLDecoder.decode(svg, "utf8").getBytes("UTF8"));
+                    else {
+                        String png = Util.cutIfStartsOrNull(url, "data:image/png;base64,");
+                        if (png != null) pngData.put(name, Base64.getDecoder().decode(png));
+                        else throw new ExternalException("Unsupported url: " + url);
+                    }
+                }
             }
         }
+        while (false);
 
         //  html - parse two blocks: 'main' and 'all'
         String[] BLOCK_CLASSES = new String[] { "b-line__services-main", "b-line__services-all" };
@@ -166,7 +200,7 @@ public class ServiceParser
                             if (!svgData.containsKey(className) && !pngData.containsKey(className))  continue;
                             //serviceName = className.substring(ICON_CLASS_SERVICE_PREFIX.length());
                             //serviceName = Util.cutIfEnds(serviceName, "_small");
-                            if (svgData.containsKey(className))  {  foundSvg=true;  Application.loadSvg(svgData.get(className), images, item);  }
+                            if (svgData.containsKey(className))  {  foundSvg=true;  Application.loadSvg(svgData.get(className), images, item, true);  }
                             else if (pngData.containsKey(className))  {
                                 BufferedImage image = ImageIO.read(new ByteArrayInputStream(pngData.get(className)));
                                 if (image==null)  throw new ExternalException("Can't load image for class ."+className);
@@ -177,7 +211,7 @@ public class ServiceParser
                             break;
                         }
                     }
-                    if (!found)  throw new ExternalException("Icon class isn't found: " + icon.className());
+                    if (!found)  {  log.error("", new ExternalException("Yandex service icon class isn't found: " + icon.className()));  continue;  }
                     if (!foundSvg)  {
                         Application.loadImages(href, images);
                     }
@@ -207,7 +241,7 @@ public class ServiceParser
         serviceImages.put("all", loadServiceImages(con, doc, "Все сервисы", allURL.toString(), "Yandex services page"));
     }
 
-    private static final List<String> EXCLUDE_YANDEX_SERVICES = Arrays.asList("pdd", "site", "browser", "dns", "yandexdatafactory");
+    private static final List<String> EXCLUDE_YANDEX_SERVICES = Arrays.asList("pdd", "site", "browser", "dns", "yandexdatafactory", "alice");
 
     private static final String YANDEX_RABOTA_SVG =
             "<svg width='56' height='56' viewBox='0 0 56 56' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>\n" +
