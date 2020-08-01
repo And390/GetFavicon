@@ -7,6 +7,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sun.misc.IOUtils;
 import util.Config;
 import utils.ExternalException;
 import utils.Util;
@@ -15,9 +16,9 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.net.URLDecoder;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -39,7 +40,7 @@ public class ServiceParser
     {
         if (!Config.getBool("test", false)) {
             loadGoogleServices();
-            loadYahooServices();
+            //loadYahooServices();  //had broken after yahoo started asking about cookies
             loadYandexServices();
             loadMailServices();
             loadOtherServices();
@@ -114,33 +115,8 @@ public class ServiceParser
         //  grab icons from css
         Map<String, byte[]> svgData = new HashMap<>();
         Map<String, byte[]> pngData = new HashMap<>();
-        do {
-            String cssLink = null;
-            find_css_link:  for (Element container : new Element[]{ doc.head(), doc.body() }) {
-                if (container == null) break;
-                for (Element script : container.getElementsByTag("script")) {
-                    String text = script.html();
-                    int i = text.indexOf("getcss(");
-                    if (i == -1) continue;
-                    i += "getcss(".length();
-                    while (i < text.length() && Character.isSpaceChar(text.charAt(i))) i++;
-                    if (i == text.length()) continue;
-                    char q = text.charAt(i);
-                    if (q != '\'' && q != '\"') continue;
-                    i++;
-                    int i2 = text.indexOf(q, i);
-                    if (i2 == -1) continue;
-                    cssLink = text.substring(i, i2);
-                    cssLink = new URL(allURL, cssLink).toString();
-                    break find_css_link;
-                }
-            }
-            if (cssLink == null)  {
-                log.error("", new Exception("Can't find CSS link for yandex services"));
-                cssLink = "https://yastatic.net/www/_/6/g/WtYO0j7on678nFbB-Xm8DY7Wg.css";
-            }
-
-            String css = con.url(cssLink).execute().body();
+        for (Element styleEl : doc.getElementsByTag("style")) {
+            String css = styleEl.html();
             Pattern cssRulePattern = Pattern.compile("([^\\{\\}]+)\\{([^\\}]*)\\}");
             Matcher cssRules = cssRulePattern.matcher(css);
             while (cssRules.find()) {
@@ -148,21 +124,22 @@ public class ServiceParser
                 for (String name : Util.slice(names, ","))  {
                     if (!name.matches("\\.[^\\s]+")) continue;
                     name = name.substring(1);
+                    if (name.equals("family_small"))  continue;  //no such file :(
                     String body = cssRules.group(2).trim();
-                    String url = Util.cutIfSurroundedOrNull(body, "background-image:url(\"", "\")");
-                    if (url == null) url = Util.cutIfSurroundedOrNull(body, "background-image:url(\'", "\')");
-                    if (url == null) url = Util.cutIfSurroundedOrNull(body, "background-image:url(", ")");
-                    String svg = Util.cutIfStartsOrNull(url, "data:image/svg+xml;charset=utf8,");
-                    if (svg != null) svgData.put(name, URLDecoder.decode(svg, "utf8").getBytes("UTF8"));
-                    else {
-                        String png = Util.cutIfStartsOrNull(url, "data:image/png;base64,");
-                        if (png != null) pngData.put(name, Base64.getDecoder().decode(png));
-                        else throw new ExternalException("Unsupported url: " + url);
+                    String url = Util.cutIfSurroundedOrNull(body, "background-image: url(\"", "\");");
+                    if (url == null) url = Util.cutIfSurroundedOrNull(body, "background-image: url(\'", "\');");
+                    if (url == null) url = Util.cutIfSurroundedOrNull(body, "background-image: url(", ");");
+                    if (url == null)  throw new ExternalException("`background-image` is not found for "+name);
+                    if (!url.startsWith("//yastatic.net/"))  throw new ExternalException("Wrong url: "+url);
+                    try (InputStream input = new URL("https:"+url).openStream()) {
+                        byte[] data = IOUtils.readFully(input, -1, false);
+                        if (url.endsWith(".svg"))  svgData.put(name, data);
+                        else if (url.endsWith(".png"))  pngData.put(name, data);
+                        else  throw new ExternalException("Wrong url: "+url);
                     }
                 }
             }
         }
-        while (false);
 
         //  html - parse two blocks: 'main' and 'all'
         String[] BLOCK_CLASSES = new String[] { "b-line__services-main", "b-line__services-all" };
@@ -195,8 +172,7 @@ public class ServiceParser
                     boolean found = false;
                     boolean foundSvg = false;
                     for (String className : icon.className().split("\\s+"))  {
-                        final String ICON_CLASS_SERVICE_PREFIX = "b-ico-";
-                        if (!className.equals(ICON_CLASSES[i]) && className.startsWith(ICON_CLASS_SERVICE_PREFIX))  {
+                        if (!className.equals(ICON_CLASSES[i]))  {
                             if (!svgData.containsKey(className) && !pngData.containsKey(className))  continue;
                             //serviceName = className.substring(ICON_CLASS_SERVICE_PREFIX.length());
                             //serviceName = Util.cutIfEnds(serviceName, "_small");
@@ -400,7 +376,7 @@ public class ServiceParser
     private static void loadOtherServices() throws IOException, ExternalException
     {
         otherServices.put("google", services.get("google").get("search"));
-        otherServices.put("yahoo", services.get("yahoo").get("home"));
+        //otherServices.put("yahoo", services.get("yahoo").get("home"));
         otherServices.put("yandex", services.get("yandex").get("search"));
         otherServices.put("mail", services.get("mail").get("home"));
 

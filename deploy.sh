@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 cd "$(dirname "$(realpath "$0")")"
-. /work/secure/access/code/my-aruba-3/host.sh
-#gradle distZip
+. /work/secure/hosts/hostvds1/host.sh
+gradle distZip
 #sshpass -p "$PASSWORD" ssh -p $PORT "$USER@$HOST" "timedatectl set-timezone Europe/Moscow; apt-get install unzip"   #for absolutely new server uncomment this, but you have to install java
 #sshpass -p "$PASSWORD" ssh -p $PORT "$USER@$HOST" "mkdir -p /work/GetFavicon"  #uncomment these two lines and comment the thrid line below (with stop) to make initial deploy
 #sshpass -p "$PASSWORD" scp -P $PORT -r config.properties "$USER@$HOST:/work/GetFavicon"

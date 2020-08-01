@@ -376,6 +376,7 @@ public class Application
     {
         //    execute
         Connection con = getConnection(url);
+        con.validateTLSCertificates(false);
         Connection.Response response = null;
         try  {  response = con.execute();  }  catch (IOException e)  {
             if (loadSewnImage(url, siteImages).isEmpty())  throw new IOException("Can't get http: "+url, e);
