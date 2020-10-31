@@ -61,29 +61,25 @@ public class ServiceParser
         Document doc = con.get();
 
         //
-        for (Element item : doc.getElementsByClass("carousel-slide"))
+        Element container = doc.getElementById("all-products");
+        if (container != null)  for (Element item : container.getElementsByClass("product"))
         {
-            Element icon = item.getElementsByClass("products-grid-item-icon").first();
+            Element icon = item.getElementsByClass("product-logo").first();
             if (icon == null)  continue;
-            String iconSrc = getAttr(icon, "data-lazy-src");
-            String title = getText(getElementByClassName(item, "products-grid-item-title"));
-            Element links = getElementByClassNameOrNull(item, "product-links-list");
-            if (links!=null)  for (Element link : links.getElementsByTag("a"))  {
-                if (link.text().equals("Use on the web"))  {
-                    String href = getAttr(link, "href");
-                    URL url = new URL(allURL, href);
-                    href = url.getProtocol() + "://" + url.getHost() + url.getPath();
+            String iconSrc = getAttr(icon, "src");
+            String title = getText(getElementByClassName(item, "glue-headline"));
+            Element link = getElementByClassNameOrNull(item, "product-link");
+            if (link!=null)  {
+                String href = getAttr(link, "href");
+                URL url = new URL(allURL, href);
+                href = url.getProtocol() + "://" + url.getHost() + url.getPath();
 
-                    //    service found
-                    String serviceName = lastWord(title.toLowerCase());
-                    if (serviceName==null)  continue;
-                    if (serviceName.equals("google+"))  serviceName = "plus";
+                String serviceName = lastWord(title.toLowerCase());
+                if (serviceName==null)  continue;
+                if (serviceName.equals("google+"))  serviceName = "plus";
 
-                    Application.ServiceImages images = loadServiceImage(con, title, href, iconSrc);
-                    if (!images.isEmpty())  serviceImages.put(serviceName, images);
-
-                    break;
-                }
+                Application.ServiceImages images = loadServiceImage(con, title, href, iconSrc);
+                if (!images.isEmpty())  serviceImages.put(serviceName, images);
             }
         }
 

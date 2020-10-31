@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 cd "$(dirname "$(realpath "$0")")"
-. /work/secure/hosts/hostvds1/host.sh
+. /work/secure/hosts/vserver/host.sh
 gradle distZip
 #sshpass -p "$PASSWORD" ssh -p $PORT "$USER@$HOST" "timedatectl set-timezone Europe/Moscow; apt-get install unzip"   #for absolutely new server uncomment this, but you have to install java
 #sshpass -p "$PASSWORD" ssh -p $PORT "$USER@$HOST" "mkdir -p /work/GetFavicon"  #uncomment these two lines and comment the thrid line below (with stop) to make initial deploy
